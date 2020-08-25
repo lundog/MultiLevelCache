@@ -1,0 +1,39 @@
+trigger:
+- none
+
+pool:
+  vmImage: 'windows-latest'
+
+variables:
+  buildConfiguration: 'Release'
+  solution: 'src/MultiLevelCache.sln'
+  libProject: 'src/MultiLevelCache/MultiLevelCache.csproj'
+  major: 1
+  minor: 0
+
+name: $(major).$(minor)$(Rev:.r)
+
+steps:
+- task: DotNetCoreCLI@2
+  inputs:
+    command: 'build'
+    projects: '$(solution)'
+    arguments: '--configuration $(buildConfiguration)'
+- task: DotNetCoreCLI@2
+  inputs:
+    command: 'test'
+    projects: '$(solution)'
+- task: DotNetCoreCLI@2
+  inputs:
+    command: 'pack'
+    packagesToPack: '$(libProject)'
+    configuration: '$(buildConfiguration)'
+    nobuild: true
+    includesymbols: true
+    versioningScheme: 'off'
+- task: NuGetCommand@2
+  inputs:
+    command: 'push'
+    packagesToPush: '$(Build.ArtifactStagingDirectory)/**/*.nupkg'
+    nuGetFeedType: 'external'
+    publishFeedCredentials: 'lundog-nuget'

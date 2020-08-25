@@ -1,8 +1,10 @@
-﻿namespace MultiLevelCaching
+﻿using System;
+
+namespace MultiLevelCaching
 {
     public interface ICacheItemSerializer
     {
-        T Deserialize<T>(byte[] valueBytes);
-        byte[] Serialize<T>(T value);
+        ICacheItem<T> Deserialize<T>(byte[] bytes);
+        byte[] Serialize<T>(T value, DateTime softExpiration, DateTime hardExpiration);
     }
 }

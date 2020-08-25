@@ -64,16 +64,16 @@ namespace MultiLevelCaching
             }
 
             string keyString = _settings.KeyFormat(key);
-            ExpiringCacheItem<T> l1CacheItem = null;
-            ExpiringCacheItem<T> l2CacheItem = null;
+            ICacheItem<T> l1CacheItem = null;
+            ICacheItem<T> l2CacheItem = null;
             bool isSoftHit = false;
             bool isStale = false;
             T value = default;
 
             if (EnableL1)
             {
-                l1CacheItem = _settings.L1Settings.Provider.Get<ExpiringCacheItem<T>>(keyString);
-                if (TryFromExpiringCacheItem(l1CacheItem, out value))
+                l1CacheItem = _settings.L1Settings.Provider.Get<T>(keyString);
+                if (TryFromCacheItem(l1CacheItem, out value))
                 {
                     isSoftHit = true;
                     isStale = IsStale(l1CacheItem);
@@ -85,10 +85,10 @@ namespace MultiLevelCaching
                 // Use L2 on L1 miss.
                 var l2CacheItemBytes = await _settings.L2Settings.Provider.Get(keyString).ConfigureAwait(false);
                 l2CacheItem = l2CacheItemBytes != null
-                    ? _settings.L2Settings.Serializer.Deserialize<ExpiringCacheItem<T>>(l2CacheItemBytes)
+                    ? _settings.L2Settings.Serializer.Deserialize<T>(l2CacheItemBytes)
                     : null;
 
-                if (TryFromExpiringCacheItem(l2CacheItem, out value))
+                if (TryFromCacheItem(l2CacheItem, out value))
                 {
                     if (EnableL1)
                     {
@@ -109,8 +109,8 @@ namespace MultiLevelCaching
                 catch (Exception ex)
                 {
                     // Use hard expiration on fetch failure.
-                    if (TryFromExpiringCacheItem(l1CacheItem, out value, useHardExpiration: true)
-                        || TryFromExpiringCacheItem(l2CacheItem, out value, useHardExpiration: true))
+                    if (TryFromCacheItem(l1CacheItem, out value, useHardExpiration: true)
+                        || TryFromCacheItem(l2CacheItem, out value, useHardExpiration: true))
                     {
                         _logger?.LogWarning(ex, "A recoverable error occurred while fetching an item after a soft cache miss. Key={Key}", keyString);
                     }
@@ -171,19 +171,19 @@ namespace MultiLevelCaching
 
             var values = new Dictionary<TKey, T>(keysList.Count);
 
-            IList<ExpiringCacheItem<T>> l1CacheItems = null;
+            IList<ICacheItem<T>> l1CacheItems = null;
             IList<int> l2IndexesToGet = null;
-            IList<ExpiringCacheItem<T>> l2CacheItems = null;
+            IList<ICacheItem<T>> l2CacheItems = null;
             IList<TKey> staleKeys = null;
 
             if (EnableL1)
             {
-                l1CacheItems = _settings.L1Settings.Provider.Get<ExpiringCacheItem<T>>(keyStrings);
+                l1CacheItems = _settings.L1Settings.Provider.Get<T>(keyStrings);
 
                 for (int i = 0; i < l1CacheItems.Count; i++)
                 {
                     var cacheItem = l1CacheItems[i];
-                    if (TryFromExpiringCacheItem(cacheItem, out var value))
+                    if (TryFromCacheItem(cacheItem, out var value))
                     {
                         var key = keysList[i];
 
@@ -220,7 +220,7 @@ namespace MultiLevelCaching
                 var l2CacheItemBytes = await _settings.L2Settings.Provider.Get(l2KeyStrings).ConfigureAwait(false);
                 l2CacheItems = l2CacheItemBytes
                     .Select(cacheItemBytes => cacheItemBytes != null
-                        ? _settings.L2Settings.Serializer.Deserialize<ExpiringCacheItem<T>>(cacheItemBytes)
+                        ? _settings.L2Settings.Serializer.Deserialize<T>(cacheItemBytes)
                         : null
                     )
                     .ToList();
@@ -228,7 +228,7 @@ namespace MultiLevelCaching
                 for (int i = 0; i < l2CacheItems.Count; i++)
                 {
                     var cacheItem = l2CacheItems[i];
-                    if (TryFromExpiringCacheItem(cacheItem, out var value))
+                    if (TryFromCacheItem(cacheItem, out var value))
                     {
                         var keyIndex = l2IndexesToGet[i];
                         var key = keysList[keyIndex];
@@ -276,7 +276,7 @@ namespace MultiLevelCaching
                             var key = keysList[i];
                             if (!values.ContainsKey(key)
                                 && !recoveredValues.ContainsKey(key)
-                                && TryFromExpiringCacheItem(l1CacheItems[i], out var value, useHardExpiration: true))
+                                && TryFromCacheItem(l1CacheItems[i], out var value, useHardExpiration: true))
                             {
                                 recoveredValues[key] = value;
                             }
@@ -291,7 +291,7 @@ namespace MultiLevelCaching
                             var key = keysList[keyIndex];
                             if (!values.ContainsKey(key)
                                 && !recoveredValues.ContainsKey(key)
-                                && TryFromExpiringCacheItem(l2CacheItems[i], out var value, useHardExpiration: true))
+                                && TryFromCacheItem(l2CacheItems[i], out var value, useHardExpiration: true))
                             {
                                 recoveredValues[key] = value;
                             }
@@ -456,61 +456,49 @@ namespace MultiLevelCaching
 
         private void SetL1(string keyString, T value)
         {
-            var expiringCacheItem = ToExpiringCacheItem(value, _settings.L1Settings.SoftDuration, _settings.L1Settings.HardDuration);
-            _settings.L1Settings.Provider.Set(keyString, expiringCacheItem, _settings.L1Settings.HardDuration);
+            _settings.L1Settings.Provider.Set(
+                keyString,
+                value,
+                softExpiration: DateTime.UtcNow.Add(_settings.L1Settings.SoftDuration),
+                hardExpiration: DateTime.UtcNow.Add(_settings.L1Settings.HardDuration)
+            );
         }
 
         private Task SetL2(string keyString, T value)
         {
-            var expiringCacheItem = ToExpiringCacheItem(value, _settings.L2Settings.SoftDuration, _settings.L2Settings.HardDuration);
-            var valueBytes = _settings.L2Settings.Serializer.Serialize(expiringCacheItem);
-            if (valueBytes == null)
+            var bytes = _settings.L2Settings.Serializer.Serialize(
+                value,
+                softExpiration: DateTime.UtcNow.Add(_settings.L1Settings.SoftDuration),
+                hardExpiration: DateTime.UtcNow.Add(_settings.L1Settings.HardDuration)
+            );
+            if (bytes == null)
             {
                 return Task.CompletedTask;
             }
-            return _settings.L2Settings.Provider.Set(keyString, valueBytes, _settings.L2Settings.HardDuration);
+            return _settings.L2Settings.Provider.Set(keyString, bytes, _settings.L2Settings.HardDuration);
         }
 
-        private bool TryFromExpiringCacheItem(ExpiringCacheItem<T> expiringCacheItem, out T value, bool useHardExpiration = false)
+        private bool TryFromCacheItem(ICacheItem<T> cacheItem, out T value, bool useHardExpiration = false)
         {
-            if (expiringCacheItem != null
+            if (cacheItem != null
                 && (
-                    (useHardExpiration && expiringCacheItem.HardExpiration > DateTime.UtcNow)
+                    (useHardExpiration && cacheItem.HardExpiration > DateTime.UtcNow)
                     ||
-                    (!useHardExpiration && expiringCacheItem.SoftExpiration > DateTime.UtcNow)
+                    (!useHardExpiration && cacheItem.SoftExpiration > DateTime.UtcNow)
                 )
             )
             {
-                //if ()
-                //{
-                //    value = (T)Array.Empty<string>();
-                //}
-                //else
-                //{
-                value = expiringCacheItem.Value;
-                //}
+                value = cacheItem.Value;
                 return true;
             }
             value = default;
             return false;
         }
 
-        private ExpiringCacheItem<T> ToExpiringCacheItem(T value, TimeSpan softDuration, TimeSpan hardDuration)
-        {
-            var utcNow = DateTime.UtcNow;
-            return new ExpiringCacheItem<T>
-            {
-                Value = value,
-                SoftExpiration = utcNow.Add(softDuration),
-                HardExpiration = utcNow.Add(hardDuration),
-                StaleTime = _settings.BackgroundFetchThreshold.HasValue ? (DateTime?)utcNow.Add(_settings.BackgroundFetchThreshold.Value) : null
-            };
-        }
-
         private bool IsCacheable(T value)
             => _settings.EnableNegativeCaching || !EqualityComparer<T>.Default.Equals(value, default);
 
-        private bool IsStale(ExpiringCacheItem<T> expiringCacheItem)
-            => expiringCacheItem.StaleTime <= DateTime.UtcNow;
+        private bool IsStale(ICacheItem<T> cacheItem)
+            => cacheItem.SoftExpiration - DateTime.UtcNow <= _settings.BackgroundFetchThreshold;
     }
 }

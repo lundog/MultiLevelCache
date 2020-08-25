@@ -1,8 +1,6 @@
 ﻿using Microsoft.Extensions.Logging;
 using ProtoBuf;
-using ProtoBuf.Meta;
 using System;
-using System.Collections.Generic;
 using System.IO;
 
 namespace MultiLevelCaching.ProtoBuf
@@ -17,21 +15,19 @@ namespace MultiLevelCaching.ProtoBuf
             _logger = logger;
         }
 
-        public T Deserialize<T>(byte[] valueBytes)
+        public ICacheItem<T> Deserialize<T>(byte[] bytes)
         {
-            if (valueBytes == null)
+            if (bytes == null)
             {
-                return default;
+                return null;
             }
 
             try
             {
-                EnsureExpiringCacheItemTypeIsAdded(typeof(T));
-
-                using (var stream = new MemoryStream(valueBytes))
+                using (var stream = new MemoryStream(bytes))
                 {
-                    var value = Serializer.Deserialize<T>(stream);
-                    return value;
+                    var cacheItem = Serializer.Deserialize<ProtoBufCacheItem<T>>(stream);
+                    return cacheItem;
                 }
             }
             catch (Exception ex)
@@ -41,20 +37,20 @@ namespace MultiLevelCaching.ProtoBuf
             }
         }
 
-        public byte[] Serialize<T>(T value)
+        public byte[] Serialize<T>(T value, DateTime softExpiration, DateTime hardExpiration)
         {
-            if (EqualityComparer<T>.Default.Equals(value, default))
-            {
-                return null;
-            }
-
             try
             {
-                EnsureExpiringCacheItemTypeIsAdded(typeof(T));
+                var cacheItem = new ProtoBufCacheItem<T>
+                {
+                    Value = value,
+                    SoftExpiration = softExpiration,
+                    HardExpiration = hardExpiration
+                };
 
                 using (var stream = new MemoryStream())
                 {
-                    Serializer.Serialize(stream, value);
+                    Serializer.Serialize(stream, cacheItem);
                     stream.Flush();
                     stream.Position = 0;
                     var valueBytes = stream.ToArray();
@@ -65,25 +61,6 @@ namespace MultiLevelCaching.ProtoBuf
             {
                 _logger?.LogError(ex, "An error occurred while serializing a cache item using ProtoBuf.");
                 return null;
-            }
-        }
-
-        private static void EnsureExpiringCacheItemTypeIsAdded(Type type)
-        {
-            if (type.IsGenericType
-                && type.GetGenericTypeDefinition() == typeof(ExpiringCacheItem<>)
-                && !RuntimeTypeModel.Default.IsDefined(type))
-            {
-                var metaType = RuntimeTypeModel.Default.Add(type, applyDefaultBehaviour: false);
-                if (metaType.GetFields().Length == 0)
-                {
-                    metaType.Add(
-                        nameof(ExpiringCacheItem<object>.Value),
-                        nameof(ExpiringCacheItem<object>.SoftExpiration),
-                        nameof(ExpiringCacheItem<object>.HardExpiration),
-                        nameof(ExpiringCacheItem<object>.StaleTime)
-                    );
-                }
             }
         }
     }

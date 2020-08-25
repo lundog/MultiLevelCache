@@ -5,9 +5,9 @@ namespace MultiLevelCaching
 {
     public interface IL1CacheProvider
     {
-        T Get<T>(string key);
-        IList<T> Get<T>(IEnumerable<string> keys);
+        ICacheItem<T> Get<T>(string key);
+        IList<ICacheItem<T>> Get<T>(IEnumerable<string> keys);
         void Remove(string key);
-        void Set<T>(string key, T value, TimeSpan duration);
+        void Set<T>(string key, T value, DateTime softExpiration, DateTime hardExpiration);
     }
 }

@@ -1,6 +1,5 @@
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Moq;
-using MultiLevelCaching.Memory;
 using MultiLevelCaching.ProtoBuf;
 using ProtoBuf;
 using System;
@@ -19,19 +18,14 @@ namespace MultiLevelCaching.Tests
         {
             var l2Provider = Mock.Of<IL2CacheProvider>();
             var serializer = new ProtoBufCacheItemSerializer();
-            var cacheItem = new ExpiringCacheItem<ICollection<CustomCacheItem>>
-            {
-                Value = Array.Empty<CustomCacheItem>(),
-                SoftExpiration = DateTime.UtcNow.AddDays(1),
-                HardExpiration = DateTime.UtcNow.AddDays(2)
-            };
-            var cacheItemBytes = serializer.Serialize(cacheItem);
+            var value = Array.Empty<CustomCacheItem>();
+            var cacheItemBytes = serializer.Serialize(value, DateTime.UtcNow.AddMinutes(10), DateTime.UtcNow.AddMinutes(20));
             Mock.Get(l2Provider)
                 .Setup(p => p.Get("1"))
                 .ReturnsAsync(cacheItemBytes);
             var settings = new MultiLevelCacheSettings<int>(
                 key => key.ToString(),
-                l2settings: new L2CacheSettings(l2Provider, serializer, new TimeSpan(1, 0, 0))
+                l2settings: new L2CacheSettings(l2Provider, serializer, new TimeSpan(0, 10, 0))
             );
             var cache = new MultiLevelCache<int, ICollection<CustomCacheItem>>(settings);
 
@@ -46,13 +40,8 @@ namespace MultiLevelCaching.Tests
         {
             var l2Provider = Mock.Of<IL2CacheProvider>();
             var serializer = new ProtoBufCacheItemSerializer();
-            var cacheItem = new ExpiringCacheItem<ICollection<CustomCacheItem>>
-            {
-                Value = Array.Empty<CustomCacheItem>(),
-                SoftExpiration = DateTime.UtcNow.AddDays(1),
-                HardExpiration = DateTime.UtcNow.AddDays(2)
-            };
-            var cacheItemBytes = serializer.Serialize(cacheItem);
+            var value = Array.Empty<CustomCacheItem>();
+            var cacheItemBytes = serializer.Serialize(value, DateTime.UtcNow.AddMinutes(10), DateTime.UtcNow.AddMinutes(20));
             Mock.Get(l2Provider)
                 .Setup(p => p.Get("1"))
                 .ReturnsAsync(cacheItemBytes);
@@ -75,13 +64,8 @@ namespace MultiLevelCaching.Tests
         {
             var l2Provider = Mock.Of<IL2CacheProvider>();
             var serializer = new ProtoBufCacheItemSerializer();
-            var cacheItem = new ExpiringCacheItem<string>
-            {
-                Value = null,
-                SoftExpiration = DateTime.UtcNow.AddDays(1),
-                HardExpiration = DateTime.UtcNow.AddDays(2)
-            };
-            var cacheItemBytes = serializer.Serialize(cacheItem);
+            var value = (string)null;
+            var cacheItemBytes = serializer.Serialize(value, DateTime.UtcNow.AddMinutes(10), DateTime.UtcNow.AddMinutes(20));
             Mock.Get(l2Provider)
                 .Setup(p => p.Get("1"))
                 .ReturnsAsync(cacheItemBytes);

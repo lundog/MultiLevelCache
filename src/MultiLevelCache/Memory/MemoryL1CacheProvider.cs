@@ -20,11 +20,11 @@ namespace MultiLevelCaching.Memory
             _logger = logger;
         }
 
-        public T Get<T>(string key)
+        public ICacheItem<T> Get<T>(string key)
         {
             try
             {
-                return _cache.Get<T>(key);
+                return _cache.Get<MemoryCacheItem<T>>(key);
             }
             catch (Exception ex)
             {
@@ -33,7 +33,7 @@ namespace MultiLevelCaching.Memory
             }
         }
 
-        public IList<T> Get<T>(IEnumerable<string> keys)
+        public IList<ICacheItem<T>> Get<T>(IEnumerable<string> keys)
         {
             if (keys == null)
             {
@@ -49,7 +49,7 @@ namespace MultiLevelCaching.Memory
             catch (Exception ex)
             {
                 _logger?.LogError(ex, "An error occurred while getting items from MemoryCache.");
-                return Array.Empty<T>();
+                return Array.Empty<ICacheItem<T>>();
             }
         }
 
@@ -65,11 +65,17 @@ namespace MultiLevelCaching.Memory
             }
         }
 
-        public void Set<T>(string key, T value, TimeSpan duration)
+        public void Set<T>(string key, T value, DateTime softExpiration, DateTime hardExpiration)
         {
             try
             {
-                _cache.Set(key, value, duration);
+                var cacheItem = new MemoryCacheItem<T>
+                {
+                    Value = value,
+                    SoftExpiration = softExpiration,
+                    HardExpiration = hardExpiration
+                };
+                _cache.Set(key, cacheItem, hardExpiration);
             }
             catch (Exception ex)
             {

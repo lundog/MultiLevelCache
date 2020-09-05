@@ -41,7 +41,7 @@ namespace MultiLevelCaching.Redis
                 throw new ArgumentNullException(nameof(keys));
             }
 
-            var redisKeys = keys.Cast<RedisKey>().ToArray();
+            var redisKeys = keys.Select(k => new RedisKey(k)).ToArray();
             if (redisKeys.Length == 0)
             {
                 return Array.Empty<byte[]>();
@@ -51,7 +51,7 @@ namespace MultiLevelCaching.Redis
             {
                 var redisValues = await _redisDb.StringGetAsync(redisKeys).ConfigureAwait(false);
                 var values = redisValues
-                    .Cast<byte[]>()
+                    .Select(v => v.IsNull ? null : (byte[])v)
                     .ToList();
                 return values;
             }

@@ -79,6 +79,7 @@ namespace MultiLevelCaching.Redis
                                         cache.Remove(key);
                                     }
                                 }).ConfigureAwait(false);
+                                _logger?.LogInformation("Subscribed to Redis cache invalidations. Channel={_channel}", _channel);
                             }
                             catch (Exception ex)
                             {

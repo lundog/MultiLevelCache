@@ -2,7 +2,7 @@
 
 namespace MultiLevelCaching
 {
-    public class MultiLevelCacheSettings<TKey>
+    public class MultiLevelCacheSettings
     {
         public TimeSpan? BackgroundFetchThreshold { get; set; }
 
@@ -12,20 +12,8 @@ namespace MultiLevelCaching
 
         public bool EnableNegativeCaching { get; set; }
 
-        public Func<TKey, string> KeyFormat { get; }
+        public L1CacheSettings L1Settings { get; set; }
 
-        public L1CacheSettings L1Settings { get; }
-
-        public L2CacheSettings L2Settings { get; }
-
-        public MultiLevelCacheSettings(
-            Func<TKey, string> keyFormat,
-            L1CacheSettings l1settings = null,
-            L2CacheSettings l2settings = null)
-        {
-            KeyFormat = keyFormat ?? throw new ArgumentNullException(nameof(keyFormat));
-            L1Settings = l1settings;
-            L2Settings = l2settings;
-        }
+        public L2CacheSettings L2Settings { get; set; }
     }
 }

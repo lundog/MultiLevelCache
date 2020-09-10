@@ -27,11 +27,16 @@ namespace MultiLevelCaching.Tests
             Mock.Get(l2Provider)
                 .Setup(p => p.Get("1"))
                 .ReturnsAsync(cacheItemBytes);
-            var settings = new MultiLevelCacheSettings<int>(
-                key => key.ToString(),
-                l2settings: new L2CacheSettings(l2Provider, serializer, new TimeSpan(0, 10, 0))
-            );
-            var cache = new MultiLevelCache<int, ICollection<CustomCacheItem>>(settings);
+            var settings = new MultiLevelCacheSettings
+            {
+                L2Settings = new L2CacheSettings
+                {
+                    Provider = l2Provider,
+                    Serializer = serializer,
+                    SoftDuration = new TimeSpan(0, 10, 0)
+                }
+            };
+            var cache = new TestCache<int, ICollection<CustomCacheItem>>(settings);
 
             var result = await cache.GetOrAdd(1, key => throw new Exception());
             Assert.IsNotNull(result);
@@ -49,14 +54,17 @@ namespace MultiLevelCaching.Tests
             Mock.Get(l2Provider)
                 .Setup(p => p.Get("1"))
                 .ReturnsAsync(cacheItemBytes);
-            var settings = new MultiLevelCacheSettings<int>(
-                key => key.ToString(),
-                l2settings: new L2CacheSettings(l2Provider, serializer, new TimeSpan(1, 0, 0))
-            )
+            var settings = new MultiLevelCacheSettings
             {
+                L2Settings = new L2CacheSettings
+                {
+                    Provider = l2Provider,
+                    Serializer = serializer,
+                    SoftDuration = new TimeSpan(0, 10, 0)
+                },
                 EnableEmptyCollectionOnNull = false
             };
-            var cache = new MultiLevelCache<int, ICollection<CustomCacheItem>>(settings);
+            var cache = new TestCache<int, ICollection<CustomCacheItem>>(settings);
 
             var result = await cache.GetOrAdd(1, key => throw new Exception());
             Assert.IsNull(result);
@@ -73,11 +81,16 @@ namespace MultiLevelCaching.Tests
             Mock.Get(l2Provider)
                 .Setup(p => p.Get("1"))
                 .ReturnsAsync(cacheItemBytes);
-            var settings = new MultiLevelCacheSettings<int>(
-                key => key.ToString(),
-                l2settings: new L2CacheSettings(l2Provider, serializer, new TimeSpan(1, 0, 0))
-            );
-            var cache = new MultiLevelCache<int, string>(settings);
+            var settings = new MultiLevelCacheSettings
+            {
+                L2Settings = new L2CacheSettings
+                {
+                    Provider = l2Provider,
+                    Serializer = serializer,
+                    SoftDuration = new TimeSpan(0, 10, 0)
+                }
+            };
+            var cache = new TestCache<int, string>(settings);
 
             var result = await cache.GetOrAdd(1, key => throw new Exception());
             Assert.IsNull(result);
@@ -94,23 +107,23 @@ namespace MultiLevelCaching.Tests
             var redisDb = new FakeRedisDatabase(millisecondsDelay: 1);
             var l2Provider = new RedisL2CacheProvider(redisDb, logger: loggerFactory.CreateLogger<RedisL2CacheProvider>());
             var serializer = new ProtoBufCacheItemSerializer(logger: loggerFactory.CreateLogger<ProtoBufCacheItemSerializer>());
-            var settings = new MultiLevelCacheSettings<int>(
-                key => key.ToString(),
-                l1settings: new L1CacheSettings(
-                    l1Provider,
-                    softDuration: new TimeSpan(0, 0, 10),
-                    invalidator: invalidator
-                ),
-                l2settings: new L2CacheSettings(
-                    l2Provider,
-                    serializer,
-                    softDuration: new TimeSpan(0, 0, 20)
-                )
-            )
+            var settings = new MultiLevelCacheSettings
             {
+                L1Settings = new L1CacheSettings
+                {
+                    Provider = l1Provider,
+                    Invalidator = invalidator,
+                    SoftDuration = new TimeSpan(0, 0, 10)
+                },
+                L2Settings = new L2CacheSettings
+                {
+                    Provider = l2Provider,
+                    Serializer = serializer,
+                    SoftDuration = new TimeSpan(0, 0, 20)
+                },
                 BackgroundFetchThreshold = new TimeSpan(0, 0, 5)
             };
-            var cache = new MultiLevelCache<int, string>(settings, logger: loggerFactory.CreateLogger<MultiLevelCache<int, string>>());
+            var cache = new TestCache<int, string>(settings, logger: loggerFactory.CreateLogger<TestCache<int, string>>());
 
             var db = new Dictionary<int, string>(Enumerable.Range(0, 1000)
                 .Select(key => new KeyValuePair<int, string>(key, key.ToString()))
@@ -141,23 +154,23 @@ namespace MultiLevelCaching.Tests
             var redisDb = new FakeRedisDatabase(millisecondsDelay: 1);
             var l2Provider = new RedisL2CacheProvider(redisDb, logger: loggerFactory.CreateLogger<RedisL2CacheProvider>());
             var serializer = new ProtoBufCacheItemSerializer(logger: loggerFactory.CreateLogger<ProtoBufCacheItemSerializer>());
-            var settings = new MultiLevelCacheSettings<int>(
-                key => key.ToString(),
-                l1settings: new L1CacheSettings(
-                    l1Provider,
-                    softDuration: new TimeSpan(0, 0, 10),
-                    invalidator: invalidator
-                ),
-                l2settings: new L2CacheSettings(
-                    l2Provider,
-                    serializer,
-                    softDuration: new TimeSpan(0, 0, 20)
-                )
-            )
+            var settings = new MultiLevelCacheSettings
             {
+                L1Settings = new L1CacheSettings
+                {
+                    Provider = l1Provider,
+                    Invalidator = invalidator,
+                    SoftDuration = new TimeSpan(0, 0, 10)
+                },
+                L2Settings = new L2CacheSettings
+                {
+                    Provider = l2Provider,
+                    Serializer = serializer,
+                    SoftDuration = new TimeSpan(0, 0, 20)
+                },
                 BackgroundFetchThreshold = new TimeSpan(0, 0, 5)
             };
-            var cache = new MultiLevelCache<int, string>(settings, logger: loggerFactory.CreateLogger<MultiLevelCache<int, string>>());
+            var cache = new TestCache<int, string>(settings, logger: loggerFactory.CreateLogger<TestCache<int, string>>());
 
             var db = new Dictionary<int, string>(Enumerable.Range(0, 1000)
                 .Select(key => new KeyValuePair<int, string>(key, key.ToString()))
@@ -212,6 +225,18 @@ namespace MultiLevelCaching.Tests
             }
 
             return values;
+        }
+
+        private class TestCache<TKey, T> : MultiLevelCache<TKey, T>
+        {
+            public TestCache(
+                MultiLevelCacheSettings settings,
+                ILogger<TestCache<TKey, T>> logger = null)
+                : base(settings, logger)
+            { }
+
+            protected override string FormatKey(TKey key)
+                => key.ToString();
         }
 
         [ProtoContract]

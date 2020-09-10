@@ -15,26 +15,51 @@ namespace MultiLevelCaching
         Task Set(TKey key, T value);
     }
 
-	public class MultiLevelCache<TKey, T> : IMultiLevelCache<TKey, T>
+	public abstract class MultiLevelCache<TKey, T> : IMultiLevelCache<TKey, T>
 	{
         private static Func<T> EmptyCollectionFactory => __emptyCollectionFactoryLazy.Value;
         private static readonly Lazy<Func<T>> __emptyCollectionFactoryLazy = new Lazy<Func<T>>(TypeExtensions.GetEmptyCollectionFactoryOrNull<T>);
 
-        private bool EnableL1 => _settings.L1Settings != null;
-        private bool EnableL2 => _settings.L2Settings != null;
+        public TimeSpan? BackgroundFetchThreshold { get; }
+
+        public bool EnableEmptyCollectionOnNull { get; }
+
+        public bool EnableFetchMultiplexer => _fetchMultiplexer != null;
+
+        public bool EnableInvalidation => _l1Invalidator != null;
+
+        public bool EnableL1 => _l1Cache != null;
+
+        public bool EnableL2 => _l2Cache != null;
+
+        public bool EnableNegativeCaching { get; }
+
+        public TimeSpan L1HardDuration { get; }
+
+        public TimeSpan L1SoftDuration { get; }
+
+        public TimeSpan L2HardDuration { get; }
+
+        public TimeSpan L2SoftDuration { get; }
+
+        protected abstract string FormatKey(TKey key);
 
 		private readonly TaskMultiplexer<TKey, T> _fetchMultiplexer;
+        private readonly IL1CacheProvider _l1Cache;
+        private readonly ICacheInvalidator _l1Invalidator;
+        private readonly IL2CacheProvider _l2Cache;
+        private readonly ICacheItemSerializer _l2Serializer;
         private readonly ILogger<MultiLevelCache<TKey, T>> _logger;
-		private readonly MultiLevelCacheSettings<TKey> _settings;
 
 		public MultiLevelCache(
-            MultiLevelCacheSettings<TKey> settings,
+            MultiLevelCacheSettings settings,
             ILogger<MultiLevelCache<TKey, T>> logger = null)
 		{
 			if (settings == null)
 			{
 				throw new ArgumentNullException(nameof(settings));
 			}
+
 			if (settings.BackgroundFetchThreshold.HasValue
 				&& settings.BackgroundFetchThreshold.Value >= settings.L1Settings?.SoftDuration
 				&& settings.BackgroundFetchThreshold.Value >= settings.L2Settings?.SoftDuration)
@@ -42,17 +67,68 @@ namespace MultiLevelCaching
 				throw new ArgumentOutOfRangeException(nameof(settings.BackgroundFetchThreshold), $"If {nameof(settings.BackgroundFetchThreshold)} is set, it must be less than either L1 or L2 SoftDuration.");
             }
 
-			if (settings.EnableFetchMultiplexer)
+            if (settings.L1Settings != null)
             {
-				_fetchMultiplexer = new TaskMultiplexer<TKey, T>();
+                if (settings.L1Settings.Provider == null)
+                {
+                    throw new ArgumentException($"If {nameof(settings.L1Settings)} is set, {nameof(settings.L1Settings.Provider)} is required.", nameof(settings.L1Settings.Provider));
+                }
+
+                if (settings.L1Settings.HardDuration < settings.L1Settings.SoftDuration)
+                {
+                    throw new ArgumentOutOfRangeException(nameof(settings.L1Settings.HardDuration), $"{nameof(settings.L1Settings.HardDuration)} must be greater than or equal to {nameof(settings.L1Settings.SoftDuration)}.");
+                }
             }
 
-			if (settings.L1Settings?.Invalidator != null)
+            if (settings.L2Settings != null)
             {
-				settings.L1Settings.Invalidator.Subscribe(settings.L1Settings.Provider);
+                if (settings.L2Settings.Provider == null)
+                {
+                    throw new ArgumentException($"If {nameof(settings.L2Settings)} is set, {nameof(settings.L2Settings.Provider)} is required.", nameof(settings.L2Settings.Provider));
+                }
+
+                if (settings.L2Settings.Serializer == null)
+                {
+                    throw new ArgumentException($"If {nameof(settings.L2Settings)} is set, {nameof(settings.L2Settings.Serializer)} is required.", nameof(settings.L2Settings.Serializer));
+                }
+
+                if (settings.L2Settings.HardDuration < settings.L2Settings.SoftDuration)
+                {
+                    throw new ArgumentOutOfRangeException(nameof(settings.L2Settings.HardDuration), $"{nameof(settings.L2Settings.HardDuration)} must be greater than or equal to {nameof(settings.L2Settings.SoftDuration)}.");
+                }
             }
 
-			_settings = settings;
+            BackgroundFetchThreshold = settings.BackgroundFetchThreshold;
+            EnableEmptyCollectionOnNull = settings.EnableEmptyCollectionOnNull;
+            EnableNegativeCaching = settings.EnableNegativeCaching;
+
+            if (settings.EnableFetchMultiplexer)
+            {
+                _fetchMultiplexer = new TaskMultiplexer<TKey, T>();
+            }
+
+            if (settings.L1Settings != null)
+            {
+                _l1Cache = settings.L1Settings.Provider;
+
+                if (settings.L1Settings.Invalidator != null)
+                {
+                    _l1Invalidator = settings.L1Settings.Invalidator;
+                    _l1Invalidator.Subscribe(_l1Cache);
+                }
+
+                L1SoftDuration = settings.L1Settings.SoftDuration;
+                L1HardDuration = settings.L1Settings.HardDuration ?? new TimeSpan(settings.L1Settings.SoftDuration.Ticks * 2);
+            }
+
+            if (settings.L2Settings != null)
+            {
+                _l2Cache = settings.L2Settings.Provider;
+                _l2Serializer = settings.L2Settings.Serializer;
+                L2SoftDuration = settings.L2Settings.SoftDuration;
+                L2HardDuration = settings.L2Settings.HardDuration ?? new TimeSpan(settings.L2Settings.SoftDuration.Ticks * 2);
+            }
+
             _logger = logger;
 		}
 
@@ -63,7 +139,7 @@ namespace MultiLevelCaching
                 throw new ArgumentNullException(nameof(fetch));
             }
 
-            string keyString = _settings.KeyFormat(key);
+            string keyString = FormatKey(key);
             ICacheItem<T> l1CacheItem = null;
             ICacheItem<T> l2CacheItem = null;
             bool isSoftHit = false;
@@ -72,7 +148,7 @@ namespace MultiLevelCaching
 
             if (EnableL1)
             {
-                l1CacheItem = _settings.L1Settings.Provider.Get<T>(keyString);
+                l1CacheItem = _l1Cache.Get<T>(keyString);
                 if (TryFromCacheItem(l1CacheItem, out value))
                 {
                     isSoftHit = true;
@@ -83,9 +159,9 @@ namespace MultiLevelCaching
             if (EnableL2 && !isSoftHit)
             {
                 // Use L2 on L1 miss.
-                var l2CacheItemBytes = await _settings.L2Settings.Provider.Get(keyString).ConfigureAwait(false);
+                var l2CacheItemBytes = await _l2Cache.Get(keyString).ConfigureAwait(false);
                 l2CacheItem = l2CacheItemBytes != null
-                    ? _settings.L2Settings.Serializer.Deserialize<T>(l2CacheItemBytes)
+                    ? _l2Serializer.Deserialize<T>(l2CacheItemBytes)
                     : null;
 
                 if (TryFromCacheItem(l2CacheItem, out value))
@@ -136,7 +212,7 @@ namespace MultiLevelCaching
             }
 
             if (value == null
-                && _settings.EnableEmptyCollectionOnNull
+                && EnableEmptyCollectionOnNull
                 && EmptyCollectionFactory != null)
             {
                 value = EmptyCollectionFactory();
@@ -166,7 +242,7 @@ namespace MultiLevelCaching
             }
 
             var keyStrings = keysList
-                .Select(_settings.KeyFormat)
+                .Select(FormatKey)
                 .ToList();
 
             var values = new Dictionary<TKey, T>(keysList.Count);
@@ -178,7 +254,7 @@ namespace MultiLevelCaching
 
             if (EnableL1)
             {
-                l1CacheItems = _settings.L1Settings.Provider.Get<T>(keyStrings);
+                l1CacheItems = _l1Cache.Get<T>(keyStrings);
 
                 for (int i = 0; i < l1CacheItems.Count; i++)
                 {
@@ -217,10 +293,10 @@ namespace MultiLevelCaching
                         l2KeyStrings.Add(keyString);
                     }
                 }
-                var l2CacheItemBytes = await _settings.L2Settings.Provider.Get(l2KeyStrings).ConfigureAwait(false);
+                var l2CacheItemBytes = await _l2Cache.Get(l2KeyStrings).ConfigureAwait(false);
                 l2CacheItems = l2CacheItemBytes
                     .Select(cacheItemBytes => cacheItemBytes != null
-                        ? _settings.L2Settings.Serializer.Deserialize<T>(cacheItemBytes)
+                        ? _l2Serializer.Deserialize<T>(cacheItemBytes)
                         : null
                     )
                     .ToList();
@@ -335,23 +411,26 @@ namespace MultiLevelCaching
 
         public async Task Remove(TKey key)
         {
-            var keyString = _settings.KeyFormat(key);
+            var keyString = FormatKey(key);
 
             if (EnableL1)
             {
-                _settings.L1Settings.Provider.Remove(keyString);
-                _settings.L1Settings.Invalidator?.Publish(keyString);
+                _l1Cache.Remove(keyString);
+                if (EnableInvalidation)
+                {
+                    _l1Invalidator.Publish(keyString);
+                }
             }
 
             if (EnableL2)
             {
-                await _settings.L2Settings.Provider.Remove(keyString).ConfigureAwait(false);
+                await _l2Cache.Remove(keyString).ConfigureAwait(false);
             }
         }
 
         public Task Set(TKey key, T value)
         {
-            var keyString = _settings.KeyFormat(key);
+            var keyString = FormatKey(key);
 
             if (EnableL1)
             {
@@ -373,14 +452,14 @@ namespace MultiLevelCaching
             Func<TKey, Task<T>> fetch,
             bool setL2InBackground)
         {
-            var value = await (_fetchMultiplexer != null
+            var value = await (EnableFetchMultiplexer
                 ? _fetchMultiplexer.GetMultiplexed(key, fetch)
                 : fetch(key)
             ).ConfigureAwait(false);
 
             if (IsCacheable(value))
             {
-                var keyString = _settings.KeyFormat(key);
+                var keyString = FormatKey(key);
 
                 if (EnableL1)
                 {
@@ -407,7 +486,7 @@ namespace MultiLevelCaching
             Func<ICollection<TKey>, Task<IDictionary<TKey, T>>> fetch,
             bool setL2InBackground)
         {
-            var values = await (_fetchMultiplexer != null
+            var values = await (EnableFetchMultiplexer
                 ? _fetchMultiplexer.GetMultiplexed(keys, fetch)
                 : fetch(keys)
             ).ConfigureAwait(false);
@@ -425,7 +504,7 @@ namespace MultiLevelCaching
             {
                 if (IsCacheable(valuePair.Value))
                 {
-                    var keyString = _settings.KeyFormat(valuePair.Key);
+                    var keyString = FormatKey(valuePair.Key);
 
                     if (EnableL1)
                     {
@@ -456,26 +535,26 @@ namespace MultiLevelCaching
 
         private void SetL1(string keyString, T value)
         {
-            _settings.L1Settings.Provider.Set(
+            _l1Cache.Set(
                 keyString,
                 value,
-                softExpiration: DateTime.UtcNow.Add(_settings.L1Settings.SoftDuration),
-                hardExpiration: DateTime.UtcNow.Add(_settings.L1Settings.HardDuration)
+                softExpiration: DateTime.UtcNow.Add(L1SoftDuration),
+                hardExpiration: DateTime.UtcNow.Add(L1HardDuration)
             );
         }
 
         private Task SetL2(string keyString, T value)
         {
-            var bytes = _settings.L2Settings.Serializer.Serialize(
+            var bytes = _l2Serializer.Serialize(
                 value,
-                softExpiration: DateTime.UtcNow.Add(_settings.L1Settings.SoftDuration),
-                hardExpiration: DateTime.UtcNow.Add(_settings.L1Settings.HardDuration)
+                softExpiration: DateTime.UtcNow.Add(L2SoftDuration),
+                hardExpiration: DateTime.UtcNow.Add(L2HardDuration)
             );
             if (bytes == null)
             {
                 return Task.CompletedTask;
             }
-            return _settings.L2Settings.Provider.Set(keyString, bytes, _settings.L2Settings.HardDuration);
+            return _l2Cache.Set(keyString, bytes, L2HardDuration);
         }
 
         private bool TryFromCacheItem(ICacheItem<T> cacheItem, out T value, bool useHardExpiration = false)
@@ -496,9 +575,9 @@ namespace MultiLevelCaching
         }
 
         private bool IsCacheable(T value)
-            => _settings.EnableNegativeCaching || !EqualityComparer<T>.Default.Equals(value, default);
+            => EnableNegativeCaching || !EqualityComparer<T>.Default.Equals(value, default);
 
         private bool IsStale(ICacheItem<T> cacheItem)
-            => cacheItem.SoftExpiration - DateTime.UtcNow <= _settings.BackgroundFetchThreshold;
+            => cacheItem.SoftExpiration - DateTime.UtcNow <= BackgroundFetchThreshold;
     }
 }

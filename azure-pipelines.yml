@@ -8,10 +8,6 @@ variables:
   buildConfiguration: 'Release'
   solution: 'src/MultiLevelCache.sln'
   libProject: 'src/MultiLevelCache/MultiLevelCache.csproj'
-  major: 1
-  minor: 0
-
-name: $(major).$(minor)$(Rev:.r)
 
 steps:
 - task: DotNetCoreCLI@2

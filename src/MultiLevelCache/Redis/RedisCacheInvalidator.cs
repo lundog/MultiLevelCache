@@ -14,20 +14,23 @@ namespace MultiLevelCaching.Redis
         private readonly ConcurrentDictionary<IL1CacheProvider, byte> _caches = new ConcurrentDictionary<IL1CacheProvider, byte>();
         private readonly string _channel;
         private readonly ILogger<RedisCacheInvalidator> _logger;
-        private readonly ISubscriber _subscriber;
+        private readonly Func<Task<ISubscriber>> _subscriberAsyncFactory;
+        private Lazy<Task<ISubscriber>> _subscriberAsyncLazy;
 
         private Initializer _redisSubscriptionInitializer;
         private bool _redisSubscriptionInitialized;
         private object _redisSubscriptionInitializerLock = new object();
 
         public RedisCacheInvalidator(
-            ISubscriber subscriber,
+            Func<Task<ISubscriber>> subscriberAsyncFactory,
             string channel = "cache/invalidate",
             ILogger<RedisCacheInvalidator> logger = null)
         {
-            _subscriber = subscriber ?? throw new ArgumentNullException(nameof(subscriber));
+            _subscriberAsyncFactory = subscriberAsyncFactory ?? throw new ArgumentNullException(nameof(subscriberAsyncFactory));
             _channel = channel;
             _logger = logger;
+
+            InitializeSubscriberAsyncLazy();
         }
 
         public void Publish(string key)
@@ -38,7 +41,8 @@ namespace MultiLevelCaching.Redis
                 {
                     try
                     {
-                        await _subscriber.PublishAsync(_channel, key, CommandFlags.FireAndForget).ConfigureAwait(false);
+                        var subscriber = await GetSubscriber().ConfigureAwait(false);
+                        await subscriber.PublishAsync(_channel, key, CommandFlags.FireAndForget).ConfigureAwait(false);
                     }
                     catch (Exception ex)
                     {
@@ -72,7 +76,8 @@ namespace MultiLevelCaching.Redis
                         {
                             try
                             {
-                                await _subscriber.SubscribeAsync(_channel, (channel, key) =>
+                                var subscriber = await GetSubscriber().ConfigureAwait(false);
+                                await subscriber.SubscribeAsync(_channel, (channel, key) =>
                                 {
                                     foreach (var cache in _caches.Keys)
                                     {
@@ -94,6 +99,25 @@ namespace MultiLevelCaching.Redis
                 })
             );
         }
+
+        private void InitializeSubscriberAsyncLazy()
+        {
+            _subscriberAsyncLazy = new Lazy<Task<ISubscriber>>(async () =>
+            {
+                try
+                {
+                    return await _subscriberAsyncFactory().ConfigureAwait(false);
+                }
+                catch
+                {
+                    InitializeSubscriberAsyncLazy();
+                    throw;
+                }
+            });
+        }
+
+        private Task<ISubscriber> GetSubscriber()
+            => _subscriberAsyncLazy.Value;
 
         private class Initializer
         {

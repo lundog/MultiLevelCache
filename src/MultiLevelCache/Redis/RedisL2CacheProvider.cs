@@ -11,21 +11,25 @@ namespace MultiLevelCaching.Redis
     public class RedisL2CacheProvider : IL2CacheProvider
     {
         private readonly ILogger<RedisL2CacheProvider> _logger;
-        private readonly IDatabaseAsync _redisDb;
+        private readonly Func<Task<IDatabaseAsync>> _redisDbAsyncFactory;
+        private Lazy<Task<IDatabaseAsync>> _redisDbAsyncLazy;
 
         public RedisL2CacheProvider(
-            IDatabaseAsync redisDb,
+            Func<Task<IDatabaseAsync>> redisDbAsyncFactory,
             ILogger<RedisL2CacheProvider> logger = null)
         {
             _logger = logger;
-            _redisDb = redisDb ?? throw new ArgumentNullException(nameof(redisDb));
+            _redisDbAsyncFactory = redisDbAsyncFactory ?? throw new ArgumentNullException(nameof(redisDbAsyncFactory));
+
+            InitializeRedisDbAsyncLazy();
         }
 
         public async Task<byte[]> Get(string key)
         {
             try
             {
-                return await _redisDb.StringGetAsync(key).ConfigureAwait(false);
+                var redisDb = await GetRedisDb().ConfigureAwait(false);
+                return await redisDb.StringGetAsync(key).ConfigureAwait(false);
             }
             catch (Exception ex)
             {
@@ -49,7 +53,8 @@ namespace MultiLevelCaching.Redis
 
             try
             {
-                var redisValues = await _redisDb.StringGetAsync(redisKeys).ConfigureAwait(false);
+                var redisDb = await GetRedisDb().ConfigureAwait(false);
+                var redisValues = await redisDb.StringGetAsync(redisKeys).ConfigureAwait(false);
                 var values = redisValues
                     .Select(v => v.IsNull ? null : (byte[])v)
                     .ToList();
@@ -66,7 +71,8 @@ namespace MultiLevelCaching.Redis
         {
             try
             {
-                await _redisDb.KeyDeleteAsync(key).ConfigureAwait(false);
+                var redisDb = await GetRedisDb().ConfigureAwait(false);
+                await redisDb.KeyDeleteAsync(key).ConfigureAwait(false);
             }
             catch (Exception ex)
             {
@@ -78,12 +84,33 @@ namespace MultiLevelCaching.Redis
         {
             try
             {
-                await _redisDb.StringSetAsync(key, value, expiry: duration).ConfigureAwait(false);
+                var redisDb = await GetRedisDb().ConfigureAwait(false);
+                await redisDb.StringSetAsync(key, value, expiry: duration).ConfigureAwait(false);
             }
             catch (Exception ex)
             {
                 _logger?.LogError(ex, "An error occurred while setting an item in Redis. Key={Key}", key);
             }
         }
+
+        private void InitializeRedisDbAsyncLazy()
+        {
+            _redisDbAsyncLazy = new Lazy<Task<IDatabaseAsync>>(async () =>
+            {
+                try
+                {
+                    return await _redisDbAsyncFactory().ConfigureAwait(false);
+                }
+                catch
+                {
+                    InitializeRedisDbAsyncLazy();
+                    throw;
+                }
+            });
+        }
+
+        private Task<IDatabaseAsync> GetRedisDb()
+            => _redisDbAsyncLazy.Value;
+
     }
 }

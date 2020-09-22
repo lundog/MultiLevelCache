@@ -6,6 +6,7 @@ using MultiLevelCaching.Memory;
 using MultiLevelCaching.ProtoBuf;
 using MultiLevelCaching.Redis;
 using ProtoBuf;
+using StackExchange.Redis;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -103,9 +104,9 @@ namespace MultiLevelCaching.Tests
             var loggerFactory = LoggerFactory.Create(builder => builder.AddConsole());
             var l1Provider = new MemoryL1CacheProvider(logger: loggerFactory.CreateLogger<MemoryL1CacheProvider>());
             var subscriber = new FakeRedisSubscriber();
-            var invalidator = new RedisCacheInvalidator(subscriber, logger: loggerFactory.CreateLogger<RedisCacheInvalidator>());
+            var invalidator = new RedisCacheInvalidator(() => Task.FromResult<ISubscriber>(subscriber), logger: loggerFactory.CreateLogger<RedisCacheInvalidator>());
             var redisDb = new FakeRedisDatabase(millisecondsDelay: 1);
-            var l2Provider = new RedisL2CacheProvider(redisDb, logger: loggerFactory.CreateLogger<RedisL2CacheProvider>());
+            var l2Provider = new RedisL2CacheProvider(() => Task.FromResult<IDatabaseAsync>(redisDb), logger: loggerFactory.CreateLogger<RedisL2CacheProvider>());
             var serializer = new ProtoBufCacheItemSerializer(logger: loggerFactory.CreateLogger<ProtoBufCacheItemSerializer>());
             var settings = new MultiLevelCacheSettings
             {
@@ -150,9 +151,9 @@ namespace MultiLevelCaching.Tests
             var loggerFactory = LoggerFactory.Create(builder => builder.AddConsole());
             var l1Provider = new MemoryL1CacheProvider(logger: loggerFactory.CreateLogger<MemoryL1CacheProvider>());
             var subscriber = new FakeRedisSubscriber();
-            var invalidator = new RedisCacheInvalidator(subscriber, logger: loggerFactory.CreateLogger<RedisCacheInvalidator>());
+            var invalidator = new RedisCacheInvalidator(() => Task.FromResult<ISubscriber>(subscriber), logger: loggerFactory.CreateLogger<RedisCacheInvalidator>());
             var redisDb = new FakeRedisDatabase(millisecondsDelay: 1);
-            var l2Provider = new RedisL2CacheProvider(redisDb, logger: loggerFactory.CreateLogger<RedisL2CacheProvider>());
+            var l2Provider = new RedisL2CacheProvider(() => Task.FromResult<IDatabaseAsync>(redisDb), logger: loggerFactory.CreateLogger<RedisL2CacheProvider>());
             var serializer = new ProtoBufCacheItemSerializer(logger: loggerFactory.CreateLogger<ProtoBufCacheItemSerializer>());
             var settings = new MultiLevelCacheSettings
             {

@@ -15,8 +15,8 @@ namespace MultiLevelCaching
         Task Set(TKey key, T value);
     }
 
-	public abstract class MultiLevelCache<TKey, T> : IMultiLevelCache<TKey, T>
-	{
+    public abstract class MultiLevelCache<TKey, T> : IMultiLevelCache<TKey, T>
+    {
         private static Func<T> EmptyCollectionFactory => __emptyCollectionFactoryLazy.Value;
         private static readonly Lazy<Func<T>> __emptyCollectionFactoryLazy = new Lazy<Func<T>>(TypeExtensions.GetEmptyCollectionFactoryOrNull<T>);
 
@@ -44,27 +44,27 @@ namespace MultiLevelCaching
 
         protected abstract string FormatKey(TKey key);
 
-		private readonly TaskMultiplexer<TKey, T> _fetchMultiplexer;
+        private readonly TaskMultiplexer<TKey, T> _fetchMultiplexer;
         private readonly IL1CacheProvider _l1Cache;
         private readonly ICacheInvalidator _l1Invalidator;
         private readonly IL2CacheProvider _l2Cache;
         private readonly ICacheItemSerializer _l2Serializer;
         private readonly ILogger<MultiLevelCache<TKey, T>> _logger;
 
-		public MultiLevelCache(
+        public MultiLevelCache(
             MultiLevelCacheSettings settings,
             ILogger<MultiLevelCache<TKey, T>> logger = null)
-		{
-			if (settings == null)
-			{
-				throw new ArgumentNullException(nameof(settings));
-			}
-
-			if (settings.BackgroundFetchThreshold.HasValue
-				&& settings.BackgroundFetchThreshold.Value >= settings.L1Settings?.SoftDuration
-				&& settings.BackgroundFetchThreshold.Value >= settings.L2Settings?.SoftDuration)
+        {
+            if (settings == null)
             {
-				throw new ArgumentOutOfRangeException(nameof(settings.BackgroundFetchThreshold), $"If {nameof(settings.BackgroundFetchThreshold)} is set, it must be less than either L1 or L2 SoftDuration.");
+                throw new ArgumentNullException(nameof(settings));
+            }
+
+            if (settings.BackgroundFetchThreshold.HasValue
+                && settings.BackgroundFetchThreshold.Value >= settings.L1Settings?.SoftDuration
+                && settings.BackgroundFetchThreshold.Value >= settings.L2Settings?.SoftDuration)
+            {
+                throw new ArgumentOutOfRangeException(nameof(settings.BackgroundFetchThreshold), $"If {nameof(settings.BackgroundFetchThreshold)} is set, it must be less than either L1 or L2 SoftDuration.");
             }
 
             if (settings.L1Settings != null)
@@ -130,7 +130,7 @@ namespace MultiLevelCaching
             }
 
             _logger = logger;
-		}
+        }
 
         public async Task<T> GetOrAdd(TKey key, Func<TKey, Task<T>> fetch)
         {
@@ -444,7 +444,7 @@ namespace MultiLevelCaching
             else
             {
                 return Task.CompletedTask;
-            }    
+            }
         }
 
         private async Task<T> FetchAndCacheResult(
@@ -499,7 +499,7 @@ namespace MultiLevelCaching
             var l2ValuesToSet = EnableL2
                 ? new List<KeyValuePair<string, T>>(values.Count)
                 : null;
-            
+
             foreach (var valuePair in values)
             {
                 if (IsCacheable(valuePair.Value))

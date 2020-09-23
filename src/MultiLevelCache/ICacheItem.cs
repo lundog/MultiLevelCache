@@ -4,10 +4,10 @@ namespace MultiLevelCaching
 {
     public interface ICacheItem<T>
     {
-		T Value { get; }
+        T Value { get; }
 
-		DateTime SoftExpiration { get; }
+        DateTime SoftExpiration { get; }
 
-		DateTime HardExpiration { get; }
+        DateTime HardExpiration { get; }
     }
 }

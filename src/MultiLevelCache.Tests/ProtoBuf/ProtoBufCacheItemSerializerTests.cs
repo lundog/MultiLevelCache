@@ -11,7 +11,7 @@ namespace MultiLevelCaching.Tests.ProtoBuf
 {
     [TestClass]
     public class ProtoBufCacheItemSerializerTests
-	{
+    {
         [TestMethod]
         public void Serialize_CacheItemString_Succeeds()
         {

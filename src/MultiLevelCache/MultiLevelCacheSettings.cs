@@ -6,8 +6,6 @@ namespace MultiLevelCaching
     {
         public TimeSpan? BackgroundFetchThreshold { get; set; }
 
-        public bool EnableEmptyCollectionOnNull { get; set; } = true;
-
         public bool EnableFetchMultiplexer { get; set; } = true;
 
         public bool EnableNegativeCaching { get; set; }

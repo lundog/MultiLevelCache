@@ -17,12 +17,7 @@ namespace MultiLevelCaching
 
     public abstract class MultiLevelCache<TKey, T> : IMultiLevelCache<TKey, T>
     {
-        private static Func<T> EmptyCollectionFactory => __emptyCollectionFactoryLazy.Value;
-        private static readonly Lazy<Func<T>> __emptyCollectionFactoryLazy = new Lazy<Func<T>>(TypeExtensions.GetEmptyCollectionFactoryOrNull<T>);
-
         public TimeSpan? BackgroundFetchThreshold { get; }
-
-        public bool EnableEmptyCollectionOnNull { get; }
 
         public bool EnableFetchMultiplexer => _fetchMultiplexer != null;
 
@@ -99,7 +94,6 @@ namespace MultiLevelCaching
             }
 
             BackgroundFetchThreshold = settings.BackgroundFetchThreshold;
-            EnableEmptyCollectionOnNull = settings.EnableEmptyCollectionOnNull;
             EnableNegativeCaching = settings.EnableNegativeCaching;
 
             if (settings.EnableFetchMultiplexer)
@@ -209,13 +203,6 @@ namespace MultiLevelCaching
                         _logger?.LogWarning(ex, "An error occurred while refreshing a stale cache item. Key={Key}", keyString);
                     }
                 });
-            }
-
-            if (value == null
-                && EnableEmptyCollectionOnNull
-                && EmptyCollectionFactory != null)
-            {
-                value = EmptyCollectionFactory();
             }
 
             return value;

@@ -1,11 +1,9 @@
 using Microsoft.Extensions.Logging;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
-using Moq;
 using MultiLevelCache.Tests.Redis;
 using MultiLevelCaching.Memory;
 using MultiLevelCaching.ProtoBuf;
 using MultiLevelCaching.Redis;
-using ProtoBuf;
 using StackExchange.Redis;
 using System;
 using System.Collections.Generic;
@@ -18,86 +16,6 @@ namespace MultiLevelCaching.Tests
     [TestClass]
     public class MultiLevelCacheTests
     {
-        [TestMethod]
-        public async Task GetOrAdd_EmptyCollectionOnNull_Succeeds()
-        {
-            var l2Provider = Mock.Of<IL2CacheProvider>();
-            var serializer = new ProtoBufCacheItemSerializer();
-            var value = Array.Empty<CustomCacheItem>();
-            var cacheItemBytes = serializer.Serialize(value, DateTime.UtcNow.AddMinutes(10), DateTime.UtcNow.AddMinutes(20));
-            Mock.Get(l2Provider)
-                .Setup(p => p.Get("1"))
-                .ReturnsAsync(cacheItemBytes);
-            var settings = new MultiLevelCacheSettings
-            {
-                L2Settings = new L2CacheSettings
-                {
-                    Provider = l2Provider,
-                    Serializer = serializer,
-                    SoftDuration = new TimeSpan(0, 10, 0)
-                }
-            };
-            var cache = new TestCache<int, ICollection<CustomCacheItem>>(settings);
-
-            var result = await cache.GetOrAdd(1, key => throw new Exception());
-            Assert.IsNotNull(result);
-            Assert.AreEqual(0, result.Count);
-            Mock.Get(l2Provider).Verify(p => p.Get("1"));
-        }
-
-        [TestMethod]
-        public async Task GetOrAdd_EmptyCollectionOnNullDisabled_Succeeds()
-        {
-            var l2Provider = Mock.Of<IL2CacheProvider>();
-            var serializer = new ProtoBufCacheItemSerializer();
-            var value = Array.Empty<CustomCacheItem>();
-            var cacheItemBytes = serializer.Serialize(value, DateTime.UtcNow.AddMinutes(10), DateTime.UtcNow.AddMinutes(20));
-            Mock.Get(l2Provider)
-                .Setup(p => p.Get("1"))
-                .ReturnsAsync(cacheItemBytes);
-            var settings = new MultiLevelCacheSettings
-            {
-                L2Settings = new L2CacheSettings
-                {
-                    Provider = l2Provider,
-                    Serializer = serializer,
-                    SoftDuration = new TimeSpan(0, 10, 0)
-                },
-                EnableEmptyCollectionOnNull = false
-            };
-            var cache = new TestCache<int, ICollection<CustomCacheItem>>(settings);
-
-            var result = await cache.GetOrAdd(1, key => throw new Exception());
-            Assert.IsNull(result);
-            Mock.Get(l2Provider).Verify(p => p.Get("1"));
-        }
-
-        [TestMethod]
-        public async Task GetOrAdd_EmptyCollectionOnNullString_Succeeds()
-        {
-            var l2Provider = Mock.Of<IL2CacheProvider>();
-            var serializer = new ProtoBufCacheItemSerializer();
-            var value = (string)null;
-            var cacheItemBytes = serializer.Serialize(value, DateTime.UtcNow.AddMinutes(10), DateTime.UtcNow.AddMinutes(20));
-            Mock.Get(l2Provider)
-                .Setup(p => p.Get("1"))
-                .ReturnsAsync(cacheItemBytes);
-            var settings = new MultiLevelCacheSettings
-            {
-                L2Settings = new L2CacheSettings
-                {
-                    Provider = l2Provider,
-                    Serializer = serializer,
-                    SoftDuration = new TimeSpan(0, 10, 0)
-                }
-            };
-            var cache = new TestCache<int, string>(settings);
-
-            var result = await cache.GetOrAdd(1, key => throw new Exception());
-            Assert.IsNull(result);
-            Mock.Get(l2Provider).Verify(p => p.Get("1"));
-        }
-
         [TestMethod]
         public void GetOrAdd_ManyRequests_Succeeds()
         {
@@ -238,13 +156,6 @@ namespace MultiLevelCaching.Tests
 
             protected override string FormatKey(TKey key)
                 => key.ToString();
-        }
-
-        [ProtoContract]
-        public class CustomCacheItem
-        {
-            [ProtoMember(1)]
-            public string Text { get; set; }
         }
     }
 }

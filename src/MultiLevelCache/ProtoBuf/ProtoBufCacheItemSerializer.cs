@@ -7,6 +7,8 @@ namespace MultiLevelCaching.ProtoBuf
 {
     public class ProtoBufCacheItemSerializer : ICacheItemSerializer
     {
+        public bool EnableEmptyCollectionOnNull { get; set; } = true;
+
         private readonly ILogger<ProtoBufCacheItemSerializer> _logger;
 
         public ProtoBufCacheItemSerializer(
@@ -27,6 +29,18 @@ namespace MultiLevelCaching.ProtoBuf
                 using (var stream = new MemoryStream(bytes))
                 {
                     var cacheItem = Serializer.Deserialize<ProtoBufCacheItem<T>>(stream);
+
+                    // ProtoBuf turns empty collections into nulls.
+                    // By default, this turns nulls back into empty collections.
+                    //
+                    // Note: This only affects the outermost T value if it is an IEnumerable.
+                    // It doesn't affect other IEnumerable properties within T.
+                    if (cacheItem.Value == null
+                        && EnableEmptyCollectionOnNull)
+                    {
+                        cacheItem.Value = EmptyOrDefault<T>.Value;
+                    }
+
                     return cacheItem;
                 }
             }

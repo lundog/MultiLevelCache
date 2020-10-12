@@ -38,7 +38,13 @@ namespace MultiLevelCaching.ProtoBuf
                     if (cacheItem.Value == null
                         && EnableEmptyCollectionOnNull)
                     {
-                        cacheItem.Value = EmptyOrDefault<T>.Value;
+                        // First, try an empty array.
+                        cacheItem.Value = EmptyArrayOrDefault<T>.Value;
+                        if (cacheItem.Value == null)
+                        {
+                            // Second, try an empty list.
+                            cacheItem.Value = ListHelpers.EmptyListOrDefault<T>();
+                        }
                     }
 
                     return cacheItem;

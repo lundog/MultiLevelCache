@@ -3,10 +3,17 @@ using System.Collections.Generic;
 
 namespace MultiLevelCaching.ProtoBuf
 {
-    internal static class ListHelpers
+    internal static class CollectionHelpers
     {
-        public static T EmptyListOrDefault<T>()
+        public static T EmptyOrDefault<T>()
         {
+            // Check if an array is an instance of T.
+            var emptyArrayOrDefault = EmptyArrayOrDefault<T>.Value;
+            if (emptyArrayOrDefault != null)
+            {
+                return emptyArrayOrDefault;
+            }
+
             // Check if T is a generic IEnumerable.
             if (typeof(T).IsGenericType
                 && typeof(T).GetGenericArguments().Length == 1)

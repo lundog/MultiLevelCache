@@ -1,10 +1,8 @@
 ﻿using Microsoft.VisualStudio.TestTools.UnitTesting;
 using MultiLevelCaching.ProtoBuf;
-using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
-using System.Text;
 
 namespace MultiLevelCaching.Tests.ProtoBuf
 {
@@ -34,6 +32,9 @@ namespace MultiLevelCaching.Tests.ProtoBuf
             Assert.AreEqual(0, EmptyArrayOrDefault<IEnumerable<object>>.Value.Count());
             Assert.AreEqual(0, EmptyArrayOrDefault<ICollection<object>>.Value.Count);
             Assert.AreEqual(0, EmptyArrayOrDefault<IList<object>>.Value.Count);
+
+            // List type should return null.
+            Assert.IsNull(EmptyArrayOrDefault<List<object>>.Value);
         }
     }
 }

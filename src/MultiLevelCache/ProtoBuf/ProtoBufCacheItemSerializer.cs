@@ -31,20 +31,14 @@ namespace MultiLevelCaching.ProtoBuf
                     var cacheItem = Serializer.Deserialize<ProtoBufCacheItem<T>>(stream);
 
                     // ProtoBuf turns empty collections into nulls.
-                    // By default, this turns nulls back into empty collections.
+                    // By default, this turns a null value into an empty collection.
                     //
                     // Note: This only affects the outermost T value if it is an IEnumerable.
                     // It doesn't affect other IEnumerable properties within T.
                     if (cacheItem.Value == null
                         && EnableEmptyCollectionOnNull)
                     {
-                        // First, try an empty array.
-                        cacheItem.Value = EmptyArrayOrDefault<T>.Value;
-                        if (cacheItem.Value == null)
-                        {
-                            // Second, try an empty list.
-                            cacheItem.Value = ListHelpers.EmptyListOrDefault<T>();
-                        }
+                        cacheItem.Value = CollectionHelpers.EmptyOrDefault<T>();
                     }
 
                     return cacheItem;

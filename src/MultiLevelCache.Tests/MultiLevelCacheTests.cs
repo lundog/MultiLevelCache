@@ -1,14 +1,16 @@
+using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Logging;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
-using MultiLevelCache.Tests.Redis;
+using MultiLevelCache.Tests.FakeRedis;
 using MultiLevelCaching.Memory;
 using MultiLevelCaching.ProtoBuf;
 using MultiLevelCaching.Redis;
+using MultiLevelCaching.Sql;
 using StackExchange.Redis;
 using System;
 using System.Collections.Generic;
+using System.Data;
 using System.Linq;
-using System.Threading;
 using System.Threading.Tasks;
 
 namespace MultiLevelCaching.Tests
@@ -17,32 +19,52 @@ namespace MultiLevelCaching.Tests
     public class MultiLevelCacheTests
     {
         [TestMethod]
-        public void GetOrAdd_ManyRequests_Succeeds()
+        public async Task GetOrAdd_ManyRequests_Succeeds()
         {
             var loggerFactory = LoggerFactory.Create(builder => builder.AddConsole());
-            var l1Provider = new MemoryL1CacheProvider(logger: loggerFactory.CreateLogger<MemoryL1CacheProvider>());
+            var l1Provider = new MemoryL1CacheProvider();
+            
+            // Memory Test
             var subscriber = new FakeRedisSubscriber();
-            var invalidator = new RedisCacheInvalidator(() => Task.FromResult<ISubscriber>(subscriber), logger: loggerFactory.CreateLogger<RedisCacheInvalidator>());
+            var publisherFactory = new RedisCacheItemPublisherFactory(() => Task.FromResult((ISubscriber)subscriber), loggerFactory);
             var redisDb = new FakeRedisDatabase(millisecondsDelay: 1);
-            var l2Provider = new RedisL2CacheProvider(() => Task.FromResult<IDatabaseAsync>(redisDb), logger: loggerFactory.CreateLogger<RedisL2CacheProvider>());
+            var l2Provider = new RedisL2CacheProvider(() => Task.FromResult<IDatabaseAsync>(redisDb));
+
+            // Redis Test
+            //var redis = await CreateMultiplexer();
+            //var publisherFactory = new RedisCacheItemPublisherFactory(() => Task.FromResult(redis.GetSubscriber()), loggerFactory);
+            //var l2Provider = new RedisL2CacheProvider(() => Task.FromResult<IDatabaseAsync>(redis.GetDatabase()));
+
+            // SQL Test
+            //var connectionString = CreateConnectionString();
+            //var l2Provider = new SqlL2CacheProvider(() => new SqlConnection(connectionString));
+
             var serializer = new ProtoBufCacheItemSerializer(logger: loggerFactory.CreateLogger<ProtoBufCacheItemSerializer>());
             var settings = new MultiLevelCacheSettings
             {
                 L1Settings = new L1CacheSettings
                 {
                     Provider = l1Provider,
-                    Invalidator = invalidator,
-                    SoftDuration = new TimeSpan(0, 0, 10)
+                    SoftDuration = new TimeSpan(0, 0, 10),
+                    PublishSettings = new CacheItemPublishSettings
+                    {
+                        PublisherFactory = publisherFactory,
+                        PublishMode = CacheItemPublishMode.PublishAndSubscribe,
+                        Serializer = serializer
+                    }
                 },
-                L2Settings = new L2CacheSettings
+                L2Settings = new L2CacheSettings[]
                 {
-                    Provider = l2Provider,
-                    Serializer = serializer,
-                    SoftDuration = new TimeSpan(0, 0, 20)
+                    new()
+                    {
+                        Provider = l2Provider,
+                        Serializer = serializer,
+                        SoftDuration = new TimeSpan(0, 0, 20)
+                    }
                 },
                 BackgroundFetchThreshold = new TimeSpan(0, 0, 5)
             };
-            var cache = new TestCache<int, string>(settings, logger: loggerFactory.CreateLogger<TestCache<int, string>>());
+            var cache = new TestCache<int, string>(settings, loggerFactory);
 
             var db = new Dictionary<int, string>(Enumerable.Range(0, 1000)
                 .Select(key => new KeyValuePair<int, string>(key, key.ToString()))
@@ -51,45 +73,81 @@ namespace MultiLevelCaching.Tests
             Enumerable.Range(0, 10)
                 .InvokeThreads(threadIdObject =>
                 {
-                    var threadId = (int)threadIdObject;
-                    var random = new Random(threadId);
+                    int key;
+                    string value;
 
                     for (int i = 0; i < 1000; i++)
                     {
-                        var key = random.Next(db.Count);
-                        var value = cache.GetOrAdd(key, k => Fetch(k, db, millisecondsDelay: 10)).Result;
+                        key = Random.Shared.Next(db.Count);
+                        value = cache.GetOrAdd(key, k => Fetch(k, db, millisecondsDelay: 10)).Result;
                         Assert.AreEqual(key.ToString(), value);
                     }
                 });
+
+            await Task.Delay(1000);
+
+            Enumerable.Range(0, 10)
+                .InvokeThreads(threadIdObject =>
+                {
+                    int key;
+
+                    for (int i = 0; i < 100; i++)
+                    {
+                        key = ((int)threadIdObject * 100) + i;
+                        cache.Remove(key).Wait();
+                    }
+                });
+
+            await Task.Delay(1000);
         }
 
         [TestMethod]
-        public void GetOrAddMany_ManyRequests_Succeeds()
+        public async Task GetOrAddMany_ManyRequests_Succeeds()
         {
             var loggerFactory = LoggerFactory.Create(builder => builder.AddConsole());
-            var l1Provider = new MemoryL1CacheProvider(logger: loggerFactory.CreateLogger<MemoryL1CacheProvider>());
+            var l1Provider = new MemoryL1CacheProvider();
+            
+            // Memory Test
             var subscriber = new FakeRedisSubscriber();
-            var invalidator = new RedisCacheInvalidator(() => Task.FromResult<ISubscriber>(subscriber), logger: loggerFactory.CreateLogger<RedisCacheInvalidator>());
+            var publisherFactory = new RedisCacheItemPublisherFactory(() => Task.FromResult<ISubscriber>(subscriber), loggerFactory);
             var redisDb = new FakeRedisDatabase(millisecondsDelay: 1);
-            var l2Provider = new RedisL2CacheProvider(() => Task.FromResult<IDatabaseAsync>(redisDb), logger: loggerFactory.CreateLogger<RedisL2CacheProvider>());
+            var l2Provider = new RedisL2CacheProvider(() => Task.FromResult<IDatabaseAsync>(redisDb));
+
+            // Redis Test
+            //var redis = await CreateMultiplexer();
+            //var publisherFactory = new RedisCacheItemPublisherFactory(() => Task.FromResult(redis.GetSubscriber()), loggerFactory);
+            //var l2Provider = new RedisL2CacheProvider(() => Task.FromResult<IDatabaseAsync>(redis.GetDatabase()));
+
+            // SQL Test
+            //var connectionString = CreateConnectionString();
+            //var l2Provider = new SqlL2CacheProvider(() => new SqlConnection(connectionString));
+            
             var serializer = new ProtoBufCacheItemSerializer(logger: loggerFactory.CreateLogger<ProtoBufCacheItemSerializer>());
             var settings = new MultiLevelCacheSettings
             {
                 L1Settings = new L1CacheSettings
                 {
                     Provider = l1Provider,
-                    Invalidator = invalidator,
-                    SoftDuration = new TimeSpan(0, 0, 10)
+                    SoftDuration = new TimeSpan(0, 0, 10),
+                    PublishSettings = new CacheItemPublishSettings
+                    {
+                        PublisherFactory = publisherFactory,
+                        PublishMode = CacheItemPublishMode.PublishAndSubscribe,
+                        Serializer = serializer
+                    }
                 },
-                L2Settings = new L2CacheSettings
+                L2Settings = new L2CacheSettings[]
                 {
-                    Provider = l2Provider,
-                    Serializer = serializer,
-                    SoftDuration = new TimeSpan(0, 0, 20)
+                    new()
+                    {
+                        Provider = l2Provider,
+                        Serializer = serializer,
+                        SoftDuration = new TimeSpan(0, 0, 20)
+                    }
                 },
                 BackgroundFetchThreshold = new TimeSpan(0, 0, 5)
             };
-            var cache = new TestCache<int, string>(settings, logger: loggerFactory.CreateLogger<TestCache<int, string>>());
+            var cache = new TestCache<int, string>(settings, loggerFactory);
 
             var db = new Dictionary<int, string>(Enumerable.Range(0, 1000)
                 .Select(key => new KeyValuePair<int, string>(key, key.ToString()))
@@ -98,13 +156,10 @@ namespace MultiLevelCaching.Tests
             Enumerable.Range(0, 10)
                 .InvokeThreads(threadIdObject =>
                 {
-                    var threadId = (int)threadIdObject;
-                    var random = new Random(threadId);
-
                     for (int i = 0; i < 1000; i++)
                     {
-                        var keys = Enumerable.Range(0, random.Next(100))
-                            .Select(_ => random.Next(db.Count))
+                        var keys = Enumerable.Range(0, Random.Shared.Next(100))
+                            .Select(_ => Random.Shared.Next(db.Count))
                             .Distinct()
                             .ToList();
                         var values = cache.GetOrAdd(keys, k => Fetch(k, db, millisecondsDelay: 10)).Result;
@@ -117,9 +172,13 @@ namespace MultiLevelCaching.Tests
                         }
                     }
                 });
+
+            await Task.Delay(1000);
+
+            await cache.Remove(Enumerable.Range(0, 1000));
         }
 
-        private async Task<T> Fetch<TKey, T>(TKey key, IReadOnlyDictionary<TKey, T> db, int millisecondsDelay = 0)
+        private static async Task<T> Fetch<TKey, T>(TKey key, IReadOnlyDictionary<TKey, T> db, int millisecondsDelay = 0)
         {
             if (millisecondsDelay > 0)
             {
@@ -129,7 +188,7 @@ namespace MultiLevelCaching.Tests
             return db.GetValueOrDefault(key);
         }
 
-        private async Task<IDictionary<TKey, T>> Fetch<TKey, T>(ICollection<TKey> keys, IReadOnlyDictionary<TKey, T> db, int millisecondsDelay = 0)
+        private static async Task<IDictionary<TKey, T>> Fetch<TKey, T>(ICollection<TKey> keys, IReadOnlyDictionary<TKey, T> db, int millisecondsDelay = 0)
         {
             if (millisecondsDelay > 0)
             {
@@ -150,12 +209,30 @@ namespace MultiLevelCaching.Tests
         {
             public TestCache(
                 MultiLevelCacheSettings settings,
-                ILogger<TestCache<TKey, T>> logger = null)
-                : base(settings, logger)
+                ILoggerFactory loggerFactory = null)
+                : base(settings, loggerFactory)
             { }
 
             protected override string FormatKey(TKey key)
                 => key.ToString();
         }
+
+        //private static async Task<IConnectionMultiplexer> CreateMultiplexer()
+        //    => await ConnectionMultiplexer.ConnectAsync(new ConfigurationOptions
+        //    {
+        //        AbortOnConnectFail = false,
+        //        EndPoints = { "" },
+        //        Password = "",
+        //        Ssl = true
+        //    });
+
+        //private static string CreateConnectionString()
+        //    => new SqlConnectionStringBuilder
+        //    {
+        //        DataSource = "",
+        //        InitialCatalog = "",
+        //        UserID = "",
+        //        Password = ""
+        //    }.ConnectionString;
     }
 }

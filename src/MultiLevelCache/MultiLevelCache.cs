@@ -7,90 +7,38 @@ using TaskMultiplexing;
 
 namespace MultiLevelCaching
 {
-    public interface IMultiLevelCache<TKey, T>
+    public abstract class MultiLevelCache<TKey, T>
     {
-        Task<T> GetOrAdd(TKey key, Func<TKey, Task<T>> fetch);
-        Task<IDictionary<TKey, T>> GetOrAdd(IEnumerable<TKey> keys, Func<ICollection<TKey>, Task<IDictionary<TKey, T>>> fetch);
-        Task Remove(TKey key);
-        Task Set(TKey key, T value);
-    }
+        protected TimeSpan? BackgroundFetchThreshold { get; }
+        protected bool EnableFetchMultiplexer => _fetchMultiplexer != null;
+        protected bool EnableL1 => _l1Cache != null;
+        protected bool EnableL2 => _l2Caches?.Any() ?? false;
+        protected bool EnableNegativeCaching { get; }
 
-    public abstract class MultiLevelCache<TKey, T> : IMultiLevelCache<TKey, T>
-    {
-        public TimeSpan? BackgroundFetchThreshold { get; }
-
-        public bool EnableFetchMultiplexer => _fetchMultiplexer != null;
-
-        public bool EnableInvalidation => _l1Invalidator != null;
-
-        public bool EnableL1 => _l1Cache != null;
-
-        public bool EnableL2 => _l2Cache != null;
-
-        public bool EnableNegativeCaching { get; }
-
-        public TimeSpan L1HardDuration { get; }
-
-        public TimeSpan L1SoftDuration { get; }
-
-        public TimeSpan L2HardDuration { get; }
-
-        public TimeSpan L2SoftDuration { get; }
+        protected virtual string CacheName => _cacheName ?? (_cacheName = DefaultCacheName());
+        private string _cacheName;
 
         protected abstract string FormatKey(TKey key);
 
         private readonly TaskMultiplexer<TKey, T> _fetchMultiplexer;
-        private readonly IL1CacheProvider _l1Cache;
-        private readonly ICacheInvalidator _l1Invalidator;
-        private readonly IL2CacheProvider _l2Cache;
-        private readonly ICacheItemSerializer _l2Serializer;
+        private readonly L1Cache<T> _l1Cache;
+        private readonly IReadOnlyList<L2Cache<T>> _l2Caches;
         private readonly ILogger<MultiLevelCache<TKey, T>> _logger;
 
         public MultiLevelCache(
             MultiLevelCacheSettings settings,
-            ILogger<MultiLevelCache<TKey, T>> logger = null)
+            ILoggerFactory loggerFactory = null)
         {
-            if (settings == null)
+            if (settings is null)
             {
                 throw new ArgumentNullException(nameof(settings));
             }
 
             if (settings.BackgroundFetchThreshold.HasValue
-                && settings.BackgroundFetchThreshold.Value >= settings.L1Settings?.SoftDuration
-                && settings.BackgroundFetchThreshold.Value >= settings.L2Settings?.SoftDuration)
+                && (settings.L1Settings == null || settings.BackgroundFetchThreshold >= settings.L1Settings.SoftDuration)
+                && settings.L2Settings.All(s => settings.BackgroundFetchThreshold >= s.SoftDuration))
             {
                 throw new ArgumentOutOfRangeException(nameof(settings.BackgroundFetchThreshold), $"If {nameof(settings.BackgroundFetchThreshold)} is set, it must be less than either L1 or L2 SoftDuration.");
-            }
-
-            if (settings.L1Settings != null)
-            {
-                if (settings.L1Settings.Provider == null)
-                {
-                    throw new ArgumentException($"If {nameof(settings.L1Settings)} is set, {nameof(settings.L1Settings.Provider)} is required.", nameof(settings.L1Settings.Provider));
-                }
-
-                if (settings.L1Settings.HardDuration < settings.L1Settings.SoftDuration)
-                {
-                    throw new ArgumentOutOfRangeException(nameof(settings.L1Settings.HardDuration), $"{nameof(settings.L1Settings.HardDuration)} must be greater than or equal to {nameof(settings.L1Settings.SoftDuration)}.");
-                }
-            }
-
-            if (settings.L2Settings != null)
-            {
-                if (settings.L2Settings.Provider == null)
-                {
-                    throw new ArgumentException($"If {nameof(settings.L2Settings)} is set, {nameof(settings.L2Settings.Provider)} is required.", nameof(settings.L2Settings.Provider));
-                }
-
-                if (settings.L2Settings.Serializer == null)
-                {
-                    throw new ArgumentException($"If {nameof(settings.L2Settings)} is set, {nameof(settings.L2Settings.Serializer)} is required.", nameof(settings.L2Settings.Serializer));
-                }
-
-                if (settings.L2Settings.HardDuration < settings.L2Settings.SoftDuration)
-                {
-                    throw new ArgumentOutOfRangeException(nameof(settings.L2Settings.HardDuration), $"{nameof(settings.L2Settings.HardDuration)} must be greater than or equal to {nameof(settings.L2Settings.SoftDuration)}.");
-                }
             }
 
             BackgroundFetchThreshold = settings.BackgroundFetchThreshold;
@@ -103,86 +51,85 @@ namespace MultiLevelCaching
 
             if (settings.L1Settings != null)
             {
-                _l1Cache = settings.L1Settings.Provider;
-
-                if (settings.L1Settings.Invalidator != null)
-                {
-                    _l1Invalidator = settings.L1Settings.Invalidator;
-                    _l1Invalidator.Subscribe(_l1Cache);
-                }
-
-                L1SoftDuration = settings.L1Settings.SoftDuration;
-                L1HardDuration = settings.L1Settings.HardDuration ?? new TimeSpan(settings.L1Settings.SoftDuration.Ticks * 2);
+                _l1Cache = new L1Cache<T>(CacheName, settings.L1Settings, loggerFactory?.CreateLogger<L1Cache<T>>());
             }
 
-            if (settings.L2Settings != null)
+            _l2Caches = settings.L2Settings.Select(x => new L2Cache<T>(x, loggerFactory?.CreateLogger<L2Cache<T>>())).ToList().AsReadOnly();
+
+            _logger = loggerFactory?.CreateLogger<MultiLevelCache<TKey, T>>();
+        }
+
+        public async Task<T> Get(TKey key)
+        {
+            var cacheItem = (await GetCacheItems(new[] { key }).ConfigureAwait(false)).First().Value.CacheItem;
+            
+            return cacheItem != null
+                ? cacheItem.Value
+                : default;
+        }
+
+        public async Task<IDictionary<TKey, T>> Get(IEnumerable<TKey> keys)
+        {
+            if (keys is null)
             {
-                _l2Cache = settings.L2Settings.Provider;
-                _l2Serializer = settings.L2Settings.Serializer;
-                L2SoftDuration = settings.L2Settings.SoftDuration;
-                L2HardDuration = settings.L2Settings.HardDuration ?? new TimeSpan(settings.L2Settings.SoftDuration.Ticks * 2);
+                throw new ArgumentNullException(nameof(keys));
             }
 
-            _logger = logger;
+            var cacheItems = await GetCacheItems(keys).ConfigureAwait(false);
+
+            return cacheItems
+                .Where(cacheItemPair => cacheItemPair.Value.CacheItem != null)
+                .ToDictionary(cacheItemPair => cacheItemPair.Key, cacheItemPair => cacheItemPair.Value.CacheItem.Value);
         }
 
         public async Task<T> GetOrAdd(TKey key, Func<TKey, Task<T>> fetch)
         {
-            if (fetch == null)
+            if (fetch is null)
             {
                 throw new ArgumentNullException(nameof(fetch));
             }
 
-            string keyString = FormatKey(key);
-            ICacheItem<T> l1CacheItem = null;
-            ICacheItem<T> l2CacheItem = null;
-            bool isSoftHit = false;
-            bool isStale = false;
-            T value = default;
+            T result = default;
 
-            if (EnableL1)
+            var cacheResult = (await GetCacheItems(new[] { key }).ConfigureAwait(false)).First().Value;
+
+            // Check for cache hit.
+            if (cacheResult.CacheItem != null)
             {
-                l1CacheItem = _l1Cache.Get<T>(keyString);
-                if (TryFromCacheItem(l1CacheItem, out value))
-                {
-                    isSoftHit = true;
-                    isStale = IsStale(l1CacheItem);
-                }
-            }
+                result = cacheResult.CacheItem.Value;
 
-            if (EnableL2 && !isSoftHit)
-            {
-                // Use L2 on L1 miss.
-                var l2CacheItemBytes = await _l2Cache.Get(keyString).ConfigureAwait(false);
-                l2CacheItem = l2CacheItemBytes != null
-                    ? _l2Serializer.Deserialize<T>(l2CacheItemBytes)
-                    : null;
-
-                if (TryFromCacheItem(l2CacheItem, out value))
+                // Check for stale hit.
+                if (cacheResult.CacheItem != null
+                    && IsStale(cacheResult.CacheItem))
                 {
-                    if (EnableL1)
+                    _ = Task.Run(async () =>
                     {
-                        SetL1(keyString, value);
-                    }
-                    isSoftHit = true;
-                    isStale = IsStale(l2CacheItem);
+                        try
+                        {
+                            await FetchAndCacheResult(key, fetch, setL2InBackground: false).ConfigureAwait(false);
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger?.LogWarning(ex, "An error occurred while refreshing a stale cache item. Key={Key}", cacheResult.CacheKey);
+                        }
+                    });
                 }
             }
-
-            if (!isSoftHit)
+            // Use fetch on cache miss.
+            else
             {
-                // Use fetch on L1 & L2 miss.
                 try
                 {
-                    value = await FetchAndCacheResult(key, fetch, setL2InBackground: true).ConfigureAwait(false);
+                    result = await FetchAndCacheResult(key, fetch, setL2InBackground: true).ConfigureAwait(false);
                 }
                 catch (Exception ex)
                 {
                     // Use hard expiration on fetch failure.
-                    if (TryFromCacheItem(l1CacheItem, out value, useHardExpiration: true)
-                        || TryFromCacheItem(l2CacheItem, out value, useHardExpiration: true))
+                    var recoveredItem = cacheResult.AllCacheItems.FirstOrDefault(cacheItem => TryFromCacheItem(cacheItem, out var _, useHardExpiration: true));
+                    if (recoveredItem != null)
                     {
-                        _logger?.LogWarning(ex, "A recoverable error occurred while fetching an item after a soft cache miss. Key={Key}", keyString);
+                        result = recoveredItem.Value;
+                        _logger?.LogWarning(ex, "A recoverable error occurred while fetching an item after a soft cache miss. Key={Key}", cacheResult.CacheKey);
                     }
                     else
                     {
@@ -190,195 +137,78 @@ namespace MultiLevelCaching
                     }
                 }
             }
-            else if (isStale)
-            {
-                _ = Task.Run(async () =>
-                {
-                    try
-                    {
-                        await FetchAndCacheResult(key, fetch, setL2InBackground: false).ConfigureAwait(false);
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger?.LogWarning(ex, "An error occurred while refreshing a stale cache item. Key={Key}", keyString);
-                    }
-                });
-            }
 
-            return value;
+            return result;
         }
 
         public async Task<IDictionary<TKey, T>> GetOrAdd(IEnumerable<TKey> keys, Func<ICollection<TKey>, Task<IDictionary<TKey, T>>> fetch)
         {
-            if (keys == null)
+            if (keys is null)
             {
                 throw new ArgumentNullException(nameof(keys));
             }
-            if (fetch == null)
+            if (fetch is null)
             {
                 throw new ArgumentNullException(nameof(fetch));
             }
 
-            var keysList = keys
-                .Distinct()
-                .ToList();
+            var cacheItems = await GetCacheItems(keys).ConfigureAwait(false);
 
-            if (!keysList.Any())
+            // Check for cache hits.
+            var results = cacheItems
+                .Where(cacheItemPair => cacheItemPair.Value.CacheItem != null)
+                .ToDictionary(cacheItemPair => cacheItemPair.Key, cacheItemPair => cacheItemPair.Value.CacheItem.Value);
+
+            // Use fetch on cache misses.
+            if (results.Count < cacheItems.Count)
             {
-                return new Dictionary<TKey, T>();
-            }
-
-            var keyStrings = keysList
-                .Select(FormatKey)
-                .ToList();
-
-            var values = new Dictionary<TKey, T>(keysList.Count);
-
-            IList<ICacheItem<T>> l1CacheItems = null;
-            IList<int> l2IndexesToGet = null;
-            IList<ICacheItem<T>> l2CacheItems = null;
-            IList<TKey> staleKeys = null;
-
-            if (EnableL1)
-            {
-                l1CacheItems = _l1Cache.Get<T>(keyStrings);
-
-                for (int i = 0; i < l1CacheItems.Count; i++)
-                {
-                    var cacheItem = l1CacheItems[i];
-                    if (TryFromCacheItem(cacheItem, out var value))
-                    {
-                        var key = keysList[i];
-
-                        values[key] = value;
-
-                        if (IsStale(cacheItem))
-                        {
-                            if (staleKeys == null)
-                            {
-                                staleKeys = new List<TKey>();
-                            }
-                            staleKeys.Add(key);
-                        }
-                    }
-                }
-            }
-
-            if (EnableL2 && values.Count < keysList.Count)
-            {
-                // Use L2 on L1 misses.
-                var l2KeyCount = keysList.Count - values.Count;
-                l2IndexesToGet = new List<int>(l2KeyCount);
-                var l2KeyStrings = new List<string>(l2KeyCount);
-                for (int i = 0; i < keysList.Count; i++)
-                {
-                    var key = keysList[i];
-                    if (!values.ContainsKey(key))
-                    {
-                        l2IndexesToGet.Add(i);
-                        var keyString = keyStrings[i];
-                        l2KeyStrings.Add(keyString);
-                    }
-                }
-                var l2CacheItemBytes = await _l2Cache.Get(l2KeyStrings).ConfigureAwait(false);
-                l2CacheItems = l2CacheItemBytes
-                    .Select(cacheItemBytes => cacheItemBytes != null
-                        ? _l2Serializer.Deserialize<T>(cacheItemBytes)
-                        : null
-                    )
+                var missedCacheItems = cacheItems
+                    .Where(cacheItemPair => cacheItemPair.Value.CacheItem == null)
                     .ToList();
 
-                for (int i = 0; i < l2CacheItems.Count; i++)
-                {
-                    var cacheItem = l2CacheItems[i];
-                    if (TryFromCacheItem(cacheItem, out var value))
-                    {
-                        var keyIndex = l2IndexesToGet[i];
-                        var key = keysList[keyIndex];
-
-                        if (EnableL1)
-                        {
-                            var keyString = keyStrings[keyIndex];
-                            SetL1(keyString, value);
-                        }
-
-                        values[key] = value;
-
-                        if (IsStale(cacheItem))
-                        {
-                            if (staleKeys == null)
-                            {
-                                staleKeys = new List<TKey>();
-                            }
-                            staleKeys.Add(key);
-                        }
-                    }
-                }
-            }
-
-            if (values.Count < keysList.Count)
-            {
-                // Use fetch on L1 & L2 misses.
-                var fetchKeys = keysList
-                    .Where(key => !values.ContainsKey(key))
-                    .ToList();
-                IDictionary<TKey, T> fetchValues;
                 try
                 {
-                    fetchValues = await FetchAndCacheResults(fetchKeys, fetch, setL2InBackground: true).ConfigureAwait(false);
+                    var fetchKeys = missedCacheItems
+                        .Select(cacheItemPair => cacheItemPair.Key)
+                        .ToList();
+
+                    var fetchResults = await FetchAndCacheResults(fetchKeys, fetch, setL2InBackground: true).ConfigureAwait(false);
+
+                    foreach (var fetchResult in fetchResults)
+                    {
+                        results[fetchResult.Key] = fetchResult.Value;
+                    }
                 }
                 catch (Exception ex)
                 {
                     // Use hard expiration on fetch failure.
-                    var recoveredValues = new Dictionary<TKey, T>(fetchKeys.Count);
-
-                    if (l1CacheItems != null)
+                    foreach (var missedCacheItem in missedCacheItems)
                     {
-                        for (int i = 0; i < l1CacheItems.Count; i++)
+                        var recoveredItem = missedCacheItem.Value.AllCacheItems.FirstOrDefault(cacheItem => TryFromCacheItem(cacheItem, out var _, useHardExpiration: true));
+                        if (recoveredItem != null)
                         {
-                            var key = keysList[i];
-                            if (!values.ContainsKey(key)
-                                && !recoveredValues.ContainsKey(key)
-                                && TryFromCacheItem(l1CacheItems[i], out var value, useHardExpiration: true))
-                            {
-                                recoveredValues[key] = value;
-                            }
+                            results[missedCacheItem.Key] = recoveredItem.Value;
+                        }
+                        else
+                        {
+                            throw;
                         }
                     }
 
-                    if (recoveredValues.Count < fetchKeys.Count && l2CacheItems != null)
-                    {
-                        for (int i = 0; i < l2CacheItems.Count; i++)
-                        {
-                            var keyIndex = l2IndexesToGet[i];
-                            var key = keysList[keyIndex];
-                            if (!values.ContainsKey(key)
-                                && !recoveredValues.ContainsKey(key)
-                                && TryFromCacheItem(l2CacheItems[i], out var value, useHardExpiration: true))
-                            {
-                                recoveredValues[key] = value;
-                            }
-                        }
-                    }
-
-                    if (recoveredValues.Count == fetchKeys.Count)
-                    {
-                        _logger?.LogWarning(ex, "A recoverable error occurred while fetching items after soft cache misses.");
-                        fetchValues = recoveredValues;
-                    }
-                    else
-                    {
-                        throw;
-                    }
-                }
-
-                foreach (var fetchValuePair in fetchValues)
-                {
-                    values[fetchValuePair.Key] = fetchValuePair.Value;
+                    _logger?.LogWarning(ex, "A recoverable error occurred while fetching items after soft cache misses.");
                 }
             }
 
-            if (staleKeys?.Any() == true)
+            // Check for stale hits.
+            var staleKeys = cacheItems
+                .Where(cacheItemPair =>
+                    cacheItemPair.Value.CacheItem != null
+                    && IsStale(cacheItemPair.Value.CacheItem)
+                )
+                .Select(cacheItemPair => cacheItemPair.Key)
+                .ToList();
+
+            if (staleKeys.Any())
             {
                 _ = Task.Run(async () =>
                 {
@@ -393,26 +223,46 @@ namespace MultiLevelCaching
                 });
             }
 
-            return values;
+            return results;
         }
 
-        public async Task Remove(TKey key)
+        public Task Remove(TKey key)
         {
             var keyString = FormatKey(key);
 
             if (EnableL1)
             {
                 _l1Cache.Remove(keyString);
-                if (EnableInvalidation)
-                {
-                    _l1Invalidator.Publish(keyString);
-                }
             }
 
-            if (EnableL2)
+            return EnableL2
+                ? Task.WhenAll(_l2Caches.Select(c => c.Remove(keyString)))
+                : Task.CompletedTask;
+        }
+
+        public Task Remove(IEnumerable<TKey> keys)
+        {
+            if (keys is null)
             {
-                await _l2Cache.Remove(keyString).ConfigureAwait(false);
+                throw new ArgumentNullException(nameof(keys));
             }
+
+            var keyStrings = keys
+                .Select(FormatKey)
+                .ToList();
+            if (keyStrings.Count == 0)
+            {
+                return Task.CompletedTask;
+            }
+
+            if (EnableL1)
+            {
+                _l1Cache.Remove(keyStrings);
+            }
+
+            return EnableL2
+                ? Task.WhenAll(_l2Caches.Select(c => c.Remove(keyStrings)))
+                : Task.CompletedTask;
         }
 
         public Task Set(TKey key, T value)
@@ -424,14 +274,118 @@ namespace MultiLevelCaching
                 SetL1(keyString, value);
             }
 
-            if (EnableL2)
+            return EnableL2
+                ? SetL2(keyString, value)
+                : Task.CompletedTask;
+        }
+
+        public Task Set(IEnumerable<KeyValuePair<TKey, T>> values)
+        {
+            if (values is null)
             {
-                return SetL2(keyString, value);
+                throw new ArgumentNullException(nameof(values));
             }
-            else
+
+            var cachePairs = values
+                .Select(valuePair => new KeyValuePair<string, T>(FormatKey(valuePair.Key), valuePair.Value))
+                .ToList();
+            if (cachePairs.Count == 0)
             {
                 return Task.CompletedTask;
             }
+
+            if (EnableL1)
+            {
+                SetL1(cachePairs);
+            }
+
+            return EnableL2
+                ? SetL2(cachePairs)
+                : Task.CompletedTask;
+        }
+
+        private string DefaultCacheName()
+        {
+            var type = GetType();
+            return $"{type.Namespace}.{type.Name.Substring(0, type.Name.IndexOf('`'))}";
+        }
+
+        private async Task<IDictionary<TKey, GetCacheItemResult>> GetCacheItems(IEnumerable<TKey> keys)
+        {
+            if (keys is null)
+            {
+                throw new ArgumentNullException(nameof(keys));
+            }
+
+            var results = keys
+                .Distinct()
+                .ToDictionary(key => key, key => new GetCacheItemResult { CacheKey = FormatKey(key) });
+
+            IList<GetCacheItemResult> getResultsToUpdate()
+                => results.Values
+                    .Where(result => result.CacheItem == null)
+                    .ToList();
+
+            IList<KeyValuePair<string, ICacheItem<T>>> getResultsToCopy(IEnumerable<GetCacheItemResult> updatedResults)
+                => updatedResults
+                    .Where(result => result.CacheItem != null)
+                    .Select(result => new KeyValuePair<string, ICacheItem<T>>(result.CacheKey, result.CacheItem))
+                    .ToList();
+
+            IEnumerable<string> toCacheKeys(IEnumerable<GetCacheItemResult> sourceResults)
+                => sourceResults
+                    .Select(result => result.CacheKey);
+
+            void update(IList<GetCacheItemResult> targetResults, IList<ICacheItem<T>> cacheItems)
+            {
+                for (int i = 0; i < cacheItems.Count; i++)
+                {
+                    var cacheItem = cacheItems[i];
+                    if (cacheItem != null)
+                    {
+                        var result = targetResults[i];
+                        result.AllCacheItems.Add(cacheItem);
+                        if (TryFromCacheItem(cacheItem, out var _))
+                        {
+                            result.CacheItem = cacheItem;
+                        }
+                    }
+                }
+            }
+
+            IList<GetCacheItemResult> resultsToUpdate;
+
+            if (EnableL1 && (resultsToUpdate = getResultsToUpdate()).Any())
+            {
+                var cacheItems = _l1Cache.Get(toCacheKeys(resultsToUpdate));
+                update(resultsToUpdate, cacheItems);
+            }
+
+            // Use L2 on L1 misses.
+            if (EnableL2)
+            {
+                for (int cacheIndex = 0; (resultsToUpdate = getResultsToUpdate()).Any() && cacheIndex < _l2Caches.Count; cacheIndex++)
+                {
+                    var cacheItems = await _l2Caches[cacheIndex].Get(toCacheKeys(resultsToUpdate)).ConfigureAwait(false);
+                    update(resultsToUpdate, cacheItems);
+
+                    // Set previous L1/L2s.
+                    IList<KeyValuePair<string, ICacheItem<T>>> resultsToCopy;
+                    if ((EnableL1 || cacheIndex > 0) && (resultsToCopy = getResultsToCopy(resultsToUpdate)).Any())
+                    {
+                        if (EnableL1)
+                        {
+                            CopyL1(resultsToCopy);
+                        }
+                        if (cacheIndex > 0)
+                        {
+                            CopyL2(resultsToCopy, _l2Caches.Take(cacheIndex));
+                        }
+                    }
+                }
+            }
+
+            return results;
         }
 
         private async Task<T> FetchAndCacheResult(
@@ -444,7 +398,7 @@ namespace MultiLevelCaching
                 : fetch(key)
             ).ConfigureAwait(false);
 
-            if (IsCacheable(value))
+            if ((EnableL1 || EnableL2) && IsCacheable(value))
             {
                 var keyString = FormatKey(key);
 
@@ -483,37 +437,30 @@ namespace MultiLevelCaching
                 return values;
             }
 
-            var l2ValuesToSet = EnableL2
-                ? new List<KeyValuePair<string, T>>(values.Count)
-                : null;
-
-            foreach (var valuePair in values)
+            if (EnableL1 || EnableL2)
             {
-                if (IsCacheable(valuePair.Value))
-                {
-                    var keyString = FormatKey(valuePair.Key);
+                var valuesToSet = values
+                    .Where(valuePair => IsCacheable(valuePair.Value))
+                    .Select(valuePair => new KeyValuePair<string, T>(FormatKey(valuePair.Key), valuePair.Value))
+                    .ToList();
 
+                if (valuesToSet.Any())
+                {
                     if (EnableL1)
                     {
-                        SetL1(keyString, valuePair.Value);
+                        SetL1(valuesToSet);
                     }
                     if (EnableL2)
                     {
-                        l2ValuesToSet.Add(new KeyValuePair<string, T>(keyString, valuePair.Value));
+                        if (setL2InBackground)
+                        {
+                            _ = Task.Run(() => SetL2(valuesToSet));
+                        }
+                        else
+                        {
+                            await SetL2(valuesToSet).ConfigureAwait(false);
+                        }
                     }
-                }
-            }
-
-            if (l2ValuesToSet?.Any() == true)
-            {
-                var setL2Tasks = l2ValuesToSet.Select(valuePair => SetL2(valuePair.Key, valuePair.Value));
-                if (setL2InBackground)
-                {
-                    _ = Task.Run(() => Task.WhenAll(setL2Tasks));
-                }
-                else
-                {
-                    await Task.WhenAll(setL2Tasks).ConfigureAwait(false);
                 }
             }
 
@@ -521,30 +468,24 @@ namespace MultiLevelCaching
         }
 
         private void SetL1(string keyString, T value)
-        {
-            _l1Cache.Set(
-                keyString,
-                value,
-                softExpiration: DateTime.UtcNow.Add(L1SoftDuration),
-                hardExpiration: DateTime.UtcNow.Add(L1HardDuration)
-            );
-        }
+            => _l1Cache.Set(keyString, value);
+
+        private void SetL1(IEnumerable<KeyValuePair<string, T>> values)
+            => _l1Cache.Set(values);
+
+        private void CopyL1(IEnumerable<KeyValuePair<string, ICacheItem<T>>> cacheItems)
+            => _l1Cache.Set(cacheItems);
 
         private Task SetL2(string keyString, T value)
-        {
-            var bytes = _l2Serializer.Serialize(
-                value,
-                softExpiration: DateTime.UtcNow.Add(L2SoftDuration),
-                hardExpiration: DateTime.UtcNow.Add(L2HardDuration)
-            );
-            if (bytes == null)
-            {
-                return Task.CompletedTask;
-            }
-            return _l2Cache.Set(keyString, bytes, L2HardDuration);
-        }
+            => Task.WhenAll(_l2Caches.Select(c => c.Set(keyString, value)));
 
-        private bool TryFromCacheItem(ICacheItem<T> cacheItem, out T value, bool useHardExpiration = false)
+        private Task SetL2(IEnumerable<KeyValuePair<string, T>> values)
+            => Task.WhenAll(_l2Caches.Select(c => c.Set(values)));
+
+        private void CopyL2(IEnumerable<KeyValuePair<string, ICacheItem<T>>> cacheItems, IEnumerable<L2Cache<T>> caches)
+            => Task.Run(() => Task.WhenAll(caches.Select(c => c.Set(cacheItems))));
+
+        private static bool TryFromCacheItem(ICacheItem<T> cacheItem, out T value, bool useHardExpiration = false)
         {
             if (cacheItem != null
                 && (
@@ -557,8 +498,11 @@ namespace MultiLevelCaching
                 value = cacheItem.Value;
                 return true;
             }
-            value = default;
-            return false;
+            else
+            {
+                value = default;
+                return false;
+            }
         }
 
         private bool IsCacheable(T value)
@@ -566,5 +510,19 @@ namespace MultiLevelCaching
 
         private bool IsStale(ICacheItem<T> cacheItem)
             => cacheItem.SoftExpiration - DateTime.UtcNow <= BackgroundFetchThreshold;
+
+        private class GetCacheItemResult
+        {
+            public string CacheKey { get; set; }
+
+            public ICacheItem<T> CacheItem { get; set; }
+
+            public IList<ICacheItem<T>> AllCacheItems
+            {
+                get => _allCacheItems ?? (_allCacheItems = new List<ICacheItem<T>>());
+                set => _allCacheItems = value;
+            }
+            private IList<ICacheItem<T>> _allCacheItems;
+        }
     }
 }

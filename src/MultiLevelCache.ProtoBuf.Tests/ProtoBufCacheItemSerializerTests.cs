@@ -1,13 +1,9 @@
 using Microsoft.VisualStudio.TestTools.UnitTesting;
-using MultiLevelCaching.ProtoBuf;
 using ProtoBuf;
 using System;
 using System.Collections.Generic;
-using System.Linq;
-using System.Threading;
-using System.Threading.Tasks;
 
-namespace MultiLevelCaching.Tests.ProtoBuf
+namespace MultiLevelCaching.ProtoBuf.Tests
 {
     [TestClass]
     public class ProtoBufCacheItemSerializerTests

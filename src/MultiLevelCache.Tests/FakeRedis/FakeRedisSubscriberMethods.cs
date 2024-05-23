@@ -1,14 +1,13 @@
 ﻿using StackExchange.Redis;
 using System;
 using System.Collections.Concurrent;
-using System.Net;
 using System.Threading.Tasks;
 
-namespace MultiLevelCache.Tests.Redis
+namespace MultiLevelCache.Tests.FakeRedis
 {
     public partial class FakeRedisSubscriber : ISubscriber
     {
-        private readonly ConcurrentDictionary<RedisChannel, ConcurrentBag<Action<RedisChannel, RedisValue>>> _handlersByChannel = new ConcurrentDictionary<RedisChannel, ConcurrentBag<Action<RedisChannel, RedisValue>>>();
+        private readonly ConcurrentDictionary<RedisChannel, ConcurrentBag<Action<RedisChannel, RedisValue>>> _handlersByChannel = new();
 
         public Task<long> PublishAsync(RedisChannel channel, RedisValue message, CommandFlags flags = CommandFlags.None)
         {

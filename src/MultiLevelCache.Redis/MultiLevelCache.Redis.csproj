@@ -2,20 +2,20 @@
 
   <PropertyGroup>
     <TargetFrameworks>netstandard2.1;netstandard2.0;net462</TargetFrameworks>
-    <PackageId>MultiLevelCache</PackageId>
+    <PackageId>MultiLevelCache.Redis</PackageId>
     <Version>2.0.0</Version>
     <Authors>Lundog</Authors>
-    <Description>A multi-level cache wrapper for MemoryCache, Redis, and SQL.</Description>
+    <Description>Redis implementation for multi-level caching.</Description>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageTags>Cache;Caching;Redis</PackageTags>
     <SymbolPackageFormat>snupkg</SymbolPackageFormat>
     <RepositoryUrl>https://github.com/lundog/MultiLevelCache</RepositoryUrl>
-    <RootNamespace>MultiLevelCaching</RootNamespace>
+    <RootNamespace>MultiLevelCaching.Redis</RootNamespace>
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Microsoft.Extensions.Caching.Memory" Version="3.1.7" />
-    <PackageReference Include="TaskMultiplexer" Version="1.0.1" />
+    <PackageReference Include="MultiLevelCache" Version="2.0.0-alpha-2024-05-22-01" />
+    <PackageReference Include="StackExchange.Redis" Version="2.7.33" />
   </ItemGroup>
 
 </Project>

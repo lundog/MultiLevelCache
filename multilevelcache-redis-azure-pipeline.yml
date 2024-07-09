@@ -1,0 +1,31 @@
+trigger:
+- none
+
+pool:
+  vmImage: 'windows-latest'
+
+variables:
+  buildConfiguration: 'Release'
+  solution: 'src/NuGet_MultiLevelCache.Redis.sln'
+  libProject: 'src/MultiLevelCache.Redis/MultiLevelCache.Redis.csproj'
+
+steps:
+- task: DotNetCoreCLI@2
+  inputs:
+    command: 'build'
+    projects: '$(solution)'
+    arguments: '--configuration $(buildConfiguration)'
+- task: DotNetCoreCLI@2
+  inputs:
+    command: 'pack'
+    packagesToPack: '$(libProject)'
+    configuration: '$(buildConfiguration)'
+    nobuild: true
+    includesymbols: true
+    versioningScheme: 'off'
+- task: NuGetCommand@2
+  inputs:
+    command: 'push'
+    packagesToPush: '$(Build.ArtifactStagingDirectory)/**/*.nupkg'
+    nuGetFeedType: 'external'
+    publishFeedCredentials: 'lundog-nuget'

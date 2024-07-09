@@ -1,0 +1,31 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.10.35013.160
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "MultiLevelCache.ProtoBuf", "MultiLevelCache.ProtoBuf\MultiLevelCache.ProtoBuf.csproj", "{A64F7471-93DC-4BBE-9171-7B1014281090}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "MultiLevelCache.ProtoBuf.Tests", "MultiLevelCache.ProtoBuf.Tests\MultiLevelCache.ProtoBuf.Tests.csproj", "{80E9A1A4-7887-49EE-84DD-E4D14BF3DAC5}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{A64F7471-93DC-4BBE-9171-7B1014281090}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{A64F7471-93DC-4BBE-9171-7B1014281090}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{A64F7471-93DC-4BBE-9171-7B1014281090}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{A64F7471-93DC-4BBE-9171-7B1014281090}.Release|Any CPU.Build.0 = Release|Any CPU
+		{80E9A1A4-7887-49EE-84DD-E4D14BF3DAC5}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{80E9A1A4-7887-49EE-84DD-E4D14BF3DAC5}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{80E9A1A4-7887-49EE-84DD-E4D14BF3DAC5}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{80E9A1A4-7887-49EE-84DD-E4D14BF3DAC5}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {B5DB441C-49FD-493C-BF23-6DF1CCDFC3EE}
+	EndGlobalSection
+EndGlobal

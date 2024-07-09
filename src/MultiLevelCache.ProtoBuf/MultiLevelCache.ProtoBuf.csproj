@@ -14,7 +14,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="MultiLevelCache" Version="2.0.0-alpha-2024-05-22-01" />
+    <PackageReference Include="MultiLevelCache" Version="2.0.0" />
     <PackageReference Include="protobuf-net" Version="3.2.30" />
   </ItemGroup>
 

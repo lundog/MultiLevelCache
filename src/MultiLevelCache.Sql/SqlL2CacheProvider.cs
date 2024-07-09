@@ -13,18 +13,24 @@ namespace MultiLevelCaching.Sql
         protected string Table { get; }
         protected string TableType { get; }
 
+        private const string DefaultSchema = "dbo";
+        private const string DefaultTable = "CacheItems";
+        private const string DefaultTableType = "CacheItemsTable";
+
         private readonly Func<IDbConnection> _dbFactory;
 
         public SqlL2CacheProvider(
-            Func<IDbConnection> dbFactory,
-            string schema = "dbo",
-            string table = "CacheItems",
-            string tableType = "CacheItemsTable")
+            SqlCacheSettings settings)
         {
-            _dbFactory = dbFactory ?? throw new ArgumentNullException(nameof(dbFactory));
-            Schema = schema;
-            Table = table;
-            TableType = tableType;
+            if (settings is null)
+            {
+                throw new ArgumentNullException(nameof(settings));
+            }
+
+            _dbFactory = settings.DbFactory ?? throw new ArgumentException($"{nameof(settings.DbFactory)} is required.", nameof(settings.DbFactory));
+            Schema = string.IsNullOrEmpty(settings.Schema) ? DefaultSchema : settings.Schema;
+            Table = string.IsNullOrEmpty(settings.Table) ? DefaultTable : settings.Table;
+            TableType = string.IsNullOrEmpty(settings.TableType) ? DefaultTableType : settings.TableType;
         }
 
         public async Task<byte[]> Get(string key)

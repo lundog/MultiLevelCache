@@ -15,7 +15,7 @@
 
   <ItemGroup>
     <PackageReference Include="MultiLevelCache" Version="2.0.0-alpha-2024-05-22-01" />
-    <PackageReference Include="StackExchange.Redis" Version="2.7.33" />
+    <PackageReference Include="StackExchange.Redis" Version="2.6.122" />
   </ItemGroup>
 
 </Project>

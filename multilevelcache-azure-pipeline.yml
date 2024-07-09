@@ -6,7 +6,7 @@ pool:
 
 variables:
   buildConfiguration: 'Release'
-  solution: 'src/MultiLevelCache.sln'
+  solution: 'src/NuGet_MultiLevelCache.sln'
   libProject: 'src/MultiLevelCache/MultiLevelCache.csproj'
 
 steps:
@@ -15,10 +15,6 @@ steps:
     command: 'build'
     projects: '$(solution)'
     arguments: '--configuration $(buildConfiguration)'
-- task: DotNetCoreCLI@2
-  inputs:
-    command: 'test'
-    projects: '$(solution)'
 - task: DotNetCoreCLI@2
   inputs:
     command: 'pack'

@@ -4,11 +4,11 @@ using System;
 using System.Linq;
 using System.Threading.Tasks;
 
-namespace MultiLevelCache.Tests.Redis
+namespace MultiLevelCache.Tests.FakeRedis
 {
     public partial class FakeRedisDatabase
     {
-        private readonly MemoryCache _cache = new MemoryCache(new MemoryCacheOptions());
+        private readonly MemoryCache _cache = new(new MemoryCacheOptions());
         private readonly int _millisecondsDelay;
 
         public FakeRedisDatabase(

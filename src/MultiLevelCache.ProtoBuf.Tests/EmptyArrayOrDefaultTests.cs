@@ -1,10 +1,9 @@
 ﻿using Microsoft.VisualStudio.TestTools.UnitTesting;
-using MultiLevelCaching.ProtoBuf;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 
-namespace MultiLevelCaching.Tests.ProtoBuf
+namespace MultiLevelCaching.ProtoBuf.Tests
 {
     [TestClass]
     public class EmptyArrayOrDefaultTests

@@ -3,7 +3,7 @@ using System;
 using System.Net;
 using System.Threading.Tasks;
 
-namespace MultiLevelCache.Tests.Redis
+namespace MultiLevelCache.Tests.FakeRedis
 {
     public partial class FakeRedisSubscriber : ISubscriber
     {

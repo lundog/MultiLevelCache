@@ -1,16 +1,21 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
-# Visual Studio Version 16
-VisualStudioVersion = 16.0.30225.117
+# Visual Studio Version 17
+VisualStudioVersion = 17.9.34728.123
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "MultiLevelCache", "MultiLevelCache\MultiLevelCache.csproj", "{F77F5A05-2430-4C00-B4FF-BCC181198523}"
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "MultiLevelCache.Tests", "MultiLevelCache.Tests\MultiLevelCache.Tests.csproj", "{ABB3C82D-7456-47E2-ABF4-6B2B8A53BC24}"
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution Items", "{4F8E2D64-B0ED-41AA-A76C-D67714EFF37D}"
-	ProjectSection(SolutionItems) = preProject
-		.editorconfig = .editorconfig
-	EndProjectSection
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "MultiLevelCache.ProtoBuf", "MultiLevelCache.ProtoBuf\MultiLevelCache.ProtoBuf.csproj", "{B2995CE1-6FCA-4B44-9CCF-E256C540010E}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "MultiLevelCache.ProtoBuf.Tests", "MultiLevelCache.ProtoBuf.Tests\MultiLevelCache.ProtoBuf.Tests.csproj", "{327505BF-5D6E-4015-9FA8-00B8818C2DEF}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "MultiLevelCache.Redis", "MultiLevelCache.Redis\MultiLevelCache.Redis.csproj", "{F7782587-C093-4A28-90A2-FECD6B39D78F}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "MultiLevelCache.Sql", "MultiLevelCache.Sql\MultiLevelCache.Sql.csproj", "{CFF42514-678B-4A20-BE11-061CE465950C}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -26,6 +31,22 @@ Global
 		{ABB3C82D-7456-47E2-ABF4-6B2B8A53BC24}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{ABB3C82D-7456-47E2-ABF4-6B2B8A53BC24}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{ABB3C82D-7456-47E2-ABF4-6B2B8A53BC24}.Release|Any CPU.Build.0 = Release|Any CPU
+		{B2995CE1-6FCA-4B44-9CCF-E256C540010E}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{B2995CE1-6FCA-4B44-9CCF-E256C540010E}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{B2995CE1-6FCA-4B44-9CCF-E256C540010E}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{B2995CE1-6FCA-4B44-9CCF-E256C540010E}.Release|Any CPU.Build.0 = Release|Any CPU
+		{327505BF-5D6E-4015-9FA8-00B8818C2DEF}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{327505BF-5D6E-4015-9FA8-00B8818C2DEF}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{327505BF-5D6E-4015-9FA8-00B8818C2DEF}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{327505BF-5D6E-4015-9FA8-00B8818C2DEF}.Release|Any CPU.Build.0 = Release|Any CPU
+		{F7782587-C093-4A28-90A2-FECD6B39D78F}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{F7782587-C093-4A28-90A2-FECD6B39D78F}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{F7782587-C093-4A28-90A2-FECD6B39D78F}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{F7782587-C093-4A28-90A2-FECD6B39D78F}.Release|Any CPU.Build.0 = Release|Any CPU
+		{CFF42514-678B-4A20-BE11-061CE465950C}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{CFF42514-678B-4A20-BE11-061CE465950C}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{CFF42514-678B-4A20-BE11-061CE465950C}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{CFF42514-678B-4A20-BE11-061CE465950C}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

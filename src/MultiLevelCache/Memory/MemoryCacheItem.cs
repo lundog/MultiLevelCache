@@ -2,7 +2,7 @@
 
 namespace MultiLevelCaching.Memory
 {
-    public class MemoryCacheItem<T> : ICacheItem<T>
+    internal class MemoryCacheItem<T> : ICacheItem<T>
     {
         public T Value { get; set; }
 

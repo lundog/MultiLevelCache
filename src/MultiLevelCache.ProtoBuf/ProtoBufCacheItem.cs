@@ -4,7 +4,7 @@ using System;
 namespace MultiLevelCaching.ProtoBuf
 {
     [ProtoContract]
-    public class ProtoBufCacheItem<T> : ICacheItem<T>
+    internal class ProtoBufCacheItem<T> : ICacheItem<T>
     {
         [ProtoMember(1)]
         public T Value { get; set; }

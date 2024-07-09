@@ -3,14 +3,11 @@
   <PropertyGroup>
     <TargetFramework>net7.0</TargetFramework>
     <IsPackable>false</IsPackable>
-    <RootNamespace>MultiLevelCaching.Tests</RootNamespace>
+    <RootNamespace>MultiLevelCaching.ProtoBuf.Tests</RootNamespace>
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Microsoft.Data.SqlClient" Version="5.2.0" />
-    <PackageReference Include="Microsoft.Extensions.Logging.Console" Version="8.0.0" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.10.0" />
-    <PackageReference Include="Moq" Version="4.20.70" />
     <PackageReference Include="MSTest.TestAdapter" Version="3.3.1" />
     <PackageReference Include="MSTest.TestFramework" Version="3.3.1" />
     <PackageReference Include="coverlet.collector" Version="6.0.2">
@@ -21,9 +18,6 @@
 
   <ItemGroup>
     <ProjectReference Include="..\MultiLevelCache.ProtoBuf\MultiLevelCache.ProtoBuf.csproj" />
-    <ProjectReference Include="..\MultiLevelCache.Sql\MultiLevelCache.Sql.csproj" />
-    <ProjectReference Include="..\MultiLevelCache\MultiLevelCache.csproj" />
-    <ProjectReference Include="..\MultiLevelCache.Redis\MultiLevelCache.Redis.csproj" />
   </ItemGroup>
 
 </Project>

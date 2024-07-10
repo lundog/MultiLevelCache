@@ -5,7 +5,7 @@ using System.Threading;
 
 namespace MultiLevelCaching.Tests
 {
-    public static class ThreadHelpers
+    internal static class ThreadHelpers
     {
         public static void InvokeThreads(int numThreads, Action action)
         {

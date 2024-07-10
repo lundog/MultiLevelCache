@@ -17,6 +17,8 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "MultiLevelCache.Redis", "Mu
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "MultiLevelCache.Sql", "MultiLevelCache.Sql\MultiLevelCache.Sql.csproj", "{CFF42514-678B-4A20-BE11-061CE465950C}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MultiLevelCache.Integration.Tests", "MultiLevelCache.Integration.Tests\MultiLevelCache.Integration.Tests.csproj", "{D882952D-A22A-4F68-89CA-D1122B71FAEC}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -47,6 +49,10 @@ Global
 		{CFF42514-678B-4A20-BE11-061CE465950C}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{CFF42514-678B-4A20-BE11-061CE465950C}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{CFF42514-678B-4A20-BE11-061CE465950C}.Release|Any CPU.Build.0 = Release|Any CPU
+		{D882952D-A22A-4F68-89CA-D1122B71FAEC}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{D882952D-A22A-4F68-89CA-D1122B71FAEC}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{D882952D-A22A-4F68-89CA-D1122B71FAEC}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{D882952D-A22A-4F68-89CA-D1122B71FAEC}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

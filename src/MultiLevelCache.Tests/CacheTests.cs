@@ -1,12 +1,5 @@
-using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Logging;
-using Microsoft.VisualStudio.TestTools.UnitTesting;
-using MultiLevelCache.Tests.FakeRedis;
 using MultiLevelCaching.Memory;
-using MultiLevelCaching.ProtoBuf;
-using MultiLevelCaching.Redis;
-using MultiLevelCaching.Sql;
-using StackExchange.Redis;
 using System;
 using System.Collections.Generic;
 using System.Data;
@@ -16,51 +9,20 @@ using System.Threading.Tasks;
 namespace MultiLevelCaching.Tests
 {
     [TestClass]
-    public class MultiLevelCacheTests
+    public class CacheTests
     {
         [TestMethod]
         public async Task GetOrAdd_ManyRequests_Succeeds()
         {
             var loggerFactory = LoggerFactory.Create(builder => builder.AddConsole());
             var l1Provider = new MemoryL1CacheProvider();
-            
-            // Memory Test
-            var subscriber = new FakeRedisSubscriber();
-            var publisherFactory = new RedisCacheItemPublisherFactory(() => Task.FromResult((ISubscriber)subscriber), loggerFactory);
-            var redisDb = new FakeRedisDatabase(millisecondsDelay: 1);
-            var l2Provider = new RedisL2CacheProvider(() => Task.FromResult<IDatabaseAsync>(redisDb));
 
-            // Redis Test
-            //var redis = await CreateMultiplexer();
-            //var publisherFactory = new RedisCacheItemPublisherFactory(() => Task.FromResult(redis.GetSubscriber()), loggerFactory);
-            //var l2Provider = new RedisL2CacheProvider(() => Task.FromResult<IDatabaseAsync>(redis.GetDatabase()));
-
-            // SQL Test
-            //var connectionString = CreateConnectionString();
-            //var l2Provider = new SqlL2CacheProvider(() => new SqlConnection(connectionString));
-
-            var serializer = new ProtoBufCacheItemSerializer(logger: loggerFactory.CreateLogger<ProtoBufCacheItemSerializer>());
             var settings = new MultiLevelCacheSettings
             {
                 L1Settings = new L1CacheSettings
                 {
                     Provider = l1Provider,
-                    SoftDuration = new TimeSpan(0, 0, 10),
-                    PublishSettings = new CacheItemPublishSettings
-                    {
-                        PublisherFactory = publisherFactory,
-                        PublishMode = CacheItemPublishMode.PublishAndSubscribe,
-                        Serializer = serializer
-                    }
-                },
-                L2Settings = new L2CacheSettings[]
-                {
-                    new()
-                    {
-                        Provider = l2Provider,
-                        Serializer = serializer,
-                        SoftDuration = new TimeSpan(0, 0, 20)
-                    }
+                    SoftDuration = new TimeSpan(0, 0, 10)
                 },
                 BackgroundFetchThreshold = new TimeSpan(0, 0, 5)
             };
@@ -106,44 +68,13 @@ namespace MultiLevelCaching.Tests
         {
             var loggerFactory = LoggerFactory.Create(builder => builder.AddConsole());
             var l1Provider = new MemoryL1CacheProvider();
-            
-            // Memory Test
-            var subscriber = new FakeRedisSubscriber();
-            var publisherFactory = new RedisCacheItemPublisherFactory(() => Task.FromResult<ISubscriber>(subscriber), loggerFactory);
-            var redisDb = new FakeRedisDatabase(millisecondsDelay: 1);
-            var l2Provider = new RedisL2CacheProvider(() => Task.FromResult<IDatabaseAsync>(redisDb));
 
-            // Redis Test
-            //var redis = await CreateMultiplexer();
-            //var publisherFactory = new RedisCacheItemPublisherFactory(() => Task.FromResult(redis.GetSubscriber()), loggerFactory);
-            //var l2Provider = new RedisL2CacheProvider(() => Task.FromResult<IDatabaseAsync>(redis.GetDatabase()));
-
-            // SQL Test
-            //var connectionString = CreateConnectionString();
-            //var l2Provider = new SqlL2CacheProvider(() => new SqlConnection(connectionString));
-            
-            var serializer = new ProtoBufCacheItemSerializer(logger: loggerFactory.CreateLogger<ProtoBufCacheItemSerializer>());
             var settings = new MultiLevelCacheSettings
             {
                 L1Settings = new L1CacheSettings
                 {
                     Provider = l1Provider,
-                    SoftDuration = new TimeSpan(0, 0, 10),
-                    PublishSettings = new CacheItemPublishSettings
-                    {
-                        PublisherFactory = publisherFactory,
-                        PublishMode = CacheItemPublishMode.PublishAndSubscribe,
-                        Serializer = serializer
-                    }
-                },
-                L2Settings = new L2CacheSettings[]
-                {
-                    new()
-                    {
-                        Provider = l2Provider,
-                        Serializer = serializer,
-                        SoftDuration = new TimeSpan(0, 0, 20)
-                    }
+                    SoftDuration = new TimeSpan(0, 0, 10)
                 },
                 BackgroundFetchThreshold = new TimeSpan(0, 0, 5)
             };
@@ -214,25 +145,7 @@ namespace MultiLevelCaching.Tests
             { }
 
             protected override string FormatKey(TKey key)
-                => key.ToString();
+                => $"{CacheName}:{key}";
         }
-
-        //private static async Task<IConnectionMultiplexer> CreateMultiplexer()
-        //    => await ConnectionMultiplexer.ConnectAsync(new ConfigurationOptions
-        //    {
-        //        AbortOnConnectFail = false,
-        //        EndPoints = { "" },
-        //        Password = "",
-        //        Ssl = true
-        //    });
-
-        //private static string CreateConnectionString()
-        //    => new SqlConnectionStringBuilder
-        //    {
-        //        DataSource = "",
-        //        InitialCatalog = "",
-        //        UserID = "",
-        //        Password = ""
-        //    }.ConnectionString;
     }
 }

@@ -305,14 +305,7 @@ namespace MultiLevelCaching
         }
 
         private string DefaultCacheName()
-        {
-            var type = GetType();
-            var backtickIndex = type.Name.IndexOf('`');
-            var typeName = backtickIndex == -1
-                ? type.Name
-                : type.Name.Substring(0, backtickIndex);
-            return $"{type.Namespace}.{typeName}";
-        }
+            => GetType().FullName;
 
         private async Task<IDictionary<TKey, GetCacheItemResult>> GetCacheItems(IEnumerable<TKey> keys)
         {

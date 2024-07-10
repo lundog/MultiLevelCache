@@ -142,11 +142,13 @@ WHEN NOT MATCHED THEN
             using (var itemsTable = ToCacheItemsTable(rows))
             {
                 await db.ExecuteAsync($@"
-UPDATE C SET
-	[Value] = I.[Value],
-	[Expiration] = I.[Expiration]
-FROM [{Schema}].[{Table}] C
-    JOIN @Items I ON C.[Key] = I.[Key]
+MERGE [{Schema}].[{Table}] WITH (HOLDLOCK) T
+USING @Items S
+	ON T.[Key] = S.[Key]
+WHEN MATCHED THEN
+	UPDATE SET [Value] = S.[Value], [Expiration] = S.[Expiration]
+WHEN NOT MATCHED THEN
+	INSERT ([Key], [Value], [Expiration]) VALUES (S.[Key], S.[Value], S.[Expiration]);
 ",
                     new { Items = ToCacheItemsTableParameter(itemsTable) }
                 ).ConfigureAwait(false);

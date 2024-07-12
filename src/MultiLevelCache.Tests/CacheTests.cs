@@ -22,9 +22,9 @@ namespace MultiLevelCaching.Tests
                 L1Settings = new L1CacheSettings
                 {
                     Provider = l1Provider,
-                    SoftDuration = new TimeSpan(0, 0, 10)
+                    SoftDuration = new TimeSpan(0, 0, 1)
                 },
-                BackgroundFetchThreshold = new TimeSpan(0, 0, 5)
+                BackgroundFetchThreshold = new TimeSpan(0, 0, 0, 0, 500)
             };
             var cache = new TestCache<int, string>(settings, loggerFactory);
 
@@ -41,7 +41,7 @@ namespace MultiLevelCaching.Tests
                     for (int i = 0; i < 1000; i++)
                     {
                         key = Random.Shared.Next(db.Count);
-                        value = cache.GetOrAdd(key, k => Fetch(k, db, millisecondsDelay: 10)).Result;
+                        value = cache.GetOrAdd(key, (_key, fetchContext) => Fetch(_key, fetchContext, db, millisecondsDelay: 10)).Result;
                         Assert.AreEqual(key.ToString(), value);
                     }
                 });
@@ -74,9 +74,9 @@ namespace MultiLevelCaching.Tests
                 L1Settings = new L1CacheSettings
                 {
                     Provider = l1Provider,
-                    SoftDuration = new TimeSpan(0, 0, 10)
+                    SoftDuration = new TimeSpan(0, 0, 1)
                 },
-                BackgroundFetchThreshold = new TimeSpan(0, 0, 5)
+                BackgroundFetchThreshold = new TimeSpan(0, 0, 0, 0, 500)
             };
             var cache = new TestCache<int, string>(settings, loggerFactory);
 
@@ -93,7 +93,7 @@ namespace MultiLevelCaching.Tests
                             .Select(_ => Random.Shared.Next(db.Count))
                             .Distinct()
                             .ToList();
-                        var values = cache.GetOrAdd(keys, k => Fetch(k, db, millisecondsDelay: 10)).Result;
+                        var values = cache.GetOrAdd(keys, (_keys, fetchContext) => Fetch(_keys, fetchContext, db, millisecondsDelay: 20)).Result;
                         Assert.IsNotNull(values);
                         Assert.AreEqual(keys.Count, values.Count);
                         foreach (var key in keys)
@@ -109,22 +109,26 @@ namespace MultiLevelCaching.Tests
             await cache.Remove(Enumerable.Range(0, 1000));
         }
 
-        private static async Task<T> Fetch<TKey, T>(TKey key, IReadOnlyDictionary<TKey, T> db, int millisecondsDelay = 0)
+        private static async Task<T> Fetch<TKey, T>(TKey key, FetchContext fetchContext, IReadOnlyDictionary<TKey, T> db, ILogger logger = null, int millisecondsDelay = 0)
         {
             if (millisecondsDelay > 0)
             {
                 await Task.Delay(millisecondsDelay);
             }
+
+            logger?.LogInformation("Fetch Key={Key}, IsBackground={IsBackground}, IsRecoverable={IsRecoverable}", key, fetchContext.IsBackground, fetchContext.IsRecoverable);
 
             return db.GetValueOrDefault(key);
         }
 
-        private static async Task<IDictionary<TKey, T>> Fetch<TKey, T>(ICollection<TKey> keys, IReadOnlyDictionary<TKey, T> db, int millisecondsDelay = 0)
+        private static async Task<IDictionary<TKey, T>> Fetch<TKey, T>(ICollection<TKey> keys, FetchContext fetchContext, IReadOnlyDictionary<TKey, T> db, ILogger logger = null, int millisecondsDelay = 0)
         {
             if (millisecondsDelay > 0)
             {
                 await Task.Delay(millisecondsDelay);
             }
+
+            logger?.LogInformation("Fetch KeyCount={KeyCount}, IsBackground={IsBackground}, IsRecoverable={IsRecoverable}", keys.Count, fetchContext.IsBackground, fetchContext.IsRecoverable);
 
             var values = new Dictionary<TKey, T>(keys.Count);
             foreach (var key in keys)

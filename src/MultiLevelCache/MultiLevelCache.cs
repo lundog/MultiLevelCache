@@ -82,7 +82,10 @@ namespace MultiLevelCaching
                 .ToDictionary(cacheItemPair => cacheItemPair.Key, cacheItemPair => cacheItemPair.Value.CacheItem.Value);
         }
 
-        public async Task<T> GetOrAdd(TKey key, Func<TKey, Task<T>> fetch)
+        public Task<T> GetOrAdd(TKey key, Func<TKey, Task<T>> fetch)
+            => GetOrAdd(key, (_key, _) => fetch(_key));
+
+        public async Task<T> GetOrAdd(TKey key, Func<TKey, FetchContext, Task<T>> fetch)
         {
             if (fetch is null)
             {
@@ -106,7 +109,15 @@ namespace MultiLevelCaching
                     {
                         try
                         {
-                            await FetchAndCacheResult(key, fetch, setL2InBackground: false).ConfigureAwait(false);
+                            await FetchAndCacheResult(
+                                key,
+                                new FetchContext
+                                {
+                                    IsBackground = true,
+                                    IsRecoverable = true
+                                },
+                                fetch
+                            ).ConfigureAwait(false);
                         }
                         catch (Exception ex)
                         {
@@ -118,15 +129,26 @@ namespace MultiLevelCaching
             // Use fetch on cache miss.
             else
             {
+                // Check if item is recoverable in case of fetch failure.
+                var recoveredItem = cacheResult.AllCacheItems.FirstOrDefault(cacheItem => TryFromCacheItem(cacheItem, out var _, useHardExpiration: true));
+                var isRecoverable = recoveredItem != null;
+
                 try
                 {
-                    result = await FetchAndCacheResult(key, fetch, setL2InBackground: true).ConfigureAwait(false);
+                    result = await FetchAndCacheResult(
+                        key,
+                        new FetchContext
+                        {
+                            IsBackground = false,
+                            IsRecoverable = isRecoverable
+                        },
+                        fetch
+                    ).ConfigureAwait(false);
                 }
                 catch (Exception ex)
                 {
-                    // Use hard expiration on fetch failure.
-                    var recoveredItem = cacheResult.AllCacheItems.FirstOrDefault(cacheItem => TryFromCacheItem(cacheItem, out var _, useHardExpiration: true));
-                    if (recoveredItem != null)
+                    // Attempt recovery on fetch failure.
+                    if (isRecoverable)
                     {
                         result = recoveredItem.Value;
                         _logger?.LogWarning(ex, "A recoverable error occurred while fetching an item after a soft cache miss. Key={Key}", cacheResult.CacheKey);
@@ -141,7 +163,10 @@ namespace MultiLevelCaching
             return result;
         }
 
-        public async Task<IDictionary<TKey, T>> GetOrAdd(IEnumerable<TKey> keys, Func<ICollection<TKey>, Task<IDictionary<TKey, T>>> fetch)
+        public Task<IDictionary<TKey, T>> GetOrAdd(IEnumerable<TKey> keys, Func<ICollection<TKey>, Task<IDictionary<TKey, T>>> fetch)
+            => GetOrAdd(keys, (_keys, _) => fetch(_keys));
+
+        public async Task<IDictionary<TKey, T>> GetOrAdd(IEnumerable<TKey> keys, Func<ICollection<TKey>, FetchContext, Task<IDictionary<TKey, T>>> fetch)
         {
             if (keys is null)
             {
@@ -166,13 +191,28 @@ namespace MultiLevelCaching
                     .Where(cacheItemPair => cacheItemPair.Value.CacheItem == null)
                     .ToList();
 
+                // Check if items are recoverable in case of fetch failure.
+                var recoveredItems = missedCacheItems
+                    .Select(missedCacheItem => new KeyValuePair<TKey, ICacheItem<T>>(missedCacheItem.Key, missedCacheItem.Value.AllCacheItems.FirstOrDefault(cacheItem => TryFromCacheItem(cacheItem, out var _, useHardExpiration: true))))
+                    .Where(recoveredItem => recoveredItem.Value != null)
+                    .ToList();
+                var isRecoverable = recoveredItems.Count == missedCacheItems.Count;
+
                 try
                 {
                     var fetchKeys = missedCacheItems
                         .Select(cacheItemPair => cacheItemPair.Key)
                         .ToList();
 
-                    var fetchResults = await FetchAndCacheResults(fetchKeys, fetch, setL2InBackground: true).ConfigureAwait(false);
+                    var fetchResults = await FetchAndCacheResults(
+                        fetchKeys,
+                        new FetchContext
+                        {
+                            IsBackground = false,
+                            IsRecoverable = isRecoverable
+                        },
+                        fetch
+                    ).ConfigureAwait(false);
 
                     foreach (var fetchResult in fetchResults)
                     {
@@ -181,21 +221,19 @@ namespace MultiLevelCaching
                 }
                 catch (Exception ex)
                 {
-                    // Use hard expiration on fetch failure.
-                    foreach (var missedCacheItem in missedCacheItems)
+                    // Attempt recovery on fetch failure.
+                    if (isRecoverable)
                     {
-                        var recoveredItem = missedCacheItem.Value.AllCacheItems.FirstOrDefault(cacheItem => TryFromCacheItem(cacheItem, out var _, useHardExpiration: true));
-                        if (recoveredItem != null)
+                        foreach (var recoveredItem in recoveredItems)
                         {
-                            results[missedCacheItem.Key] = recoveredItem.Value;
+                            results[recoveredItem.Key] = recoveredItem.Value.Value;
                         }
-                        else
-                        {
-                            throw;
-                        }
+                        _logger?.LogWarning(ex, "A recoverable error occurred while fetching items after soft cache misses.");
                     }
-
-                    _logger?.LogWarning(ex, "A recoverable error occurred while fetching items after soft cache misses.");
+                    else
+                    {
+                        throw;
+                    }
                 }
             }
 
@@ -214,7 +252,15 @@ namespace MultiLevelCaching
                 {
                     try
                     {
-                        await FetchAndCacheResults(staleKeys, fetch, setL2InBackground: false).ConfigureAwait(false);
+                        await FetchAndCacheResults(
+                            staleKeys,
+                            new FetchContext
+                            {
+                                IsBackground = true,
+                                IsRecoverable = true
+                            },
+                            fetch
+                        ).ConfigureAwait(false);
                     }
                     catch (Exception ex)
                     {
@@ -387,12 +433,12 @@ namespace MultiLevelCaching
 
         private async Task<T> FetchAndCacheResult(
             TKey key,
-            Func<TKey, Task<T>> fetch,
-            bool setL2InBackground)
+            FetchContext fetchContext,
+            Func<TKey, FetchContext, Task<T>> fetch)
         {
             var value = await (EnableFetchMultiplexer
-                ? _fetchMultiplexer.GetMultiplexed(key, fetch)
-                : fetch(key)
+                ? _fetchMultiplexer.GetMultiplexed(key, _key => fetch(_key, fetchContext))
+                : fetch(key, fetchContext)
             ).ConfigureAwait(false);
 
             if ((EnableL1 || EnableL2) && IsCacheable(value))
@@ -405,13 +451,13 @@ namespace MultiLevelCaching
                 }
                 if (EnableL2)
                 {
-                    if (setL2InBackground)
+                    if (fetchContext.IsBackground)
                     {
-                        _ = Task.Run(() => SetL2(keyString, value));
+                        await SetL2(keyString, value).ConfigureAwait(false);
                     }
                     else
                     {
-                        await SetL2(keyString, value).ConfigureAwait(false);
+                        _ = Task.Run(() => SetL2(keyString, value));
                     }
                 }
             }
@@ -421,12 +467,12 @@ namespace MultiLevelCaching
 
         private async Task<IDictionary<TKey, T>> FetchAndCacheResults(
             ICollection<TKey> keys,
-            Func<ICollection<TKey>, Task<IDictionary<TKey, T>>> fetch,
-            bool setL2InBackground)
+            FetchContext fetchContext,
+            Func<ICollection<TKey>, FetchContext, Task<IDictionary<TKey, T>>> fetch)
         {
             var values = await (EnableFetchMultiplexer
-                ? _fetchMultiplexer.GetMultiplexed(keys, fetch)
-                : fetch(keys)
+                ? _fetchMultiplexer.GetMultiplexed(keys, _keys => fetch(_keys, fetchContext))
+                : fetch(keys, fetchContext)
             ).ConfigureAwait(false);
 
             if (!values.Any())
@@ -449,13 +495,13 @@ namespace MultiLevelCaching
                     }
                     if (EnableL2)
                     {
-                        if (setL2InBackground)
+                        if (fetchContext.IsBackground)
                         {
-                            _ = Task.Run(() => SetL2(valuesToSet));
+                            await SetL2(valuesToSet).ConfigureAwait(false);
                         }
                         else
                         {
-                            await SetL2(valuesToSet).ConfigureAwait(false);
+                            _ = Task.Run(() => SetL2(valuesToSet));
                         }
                     }
                 }

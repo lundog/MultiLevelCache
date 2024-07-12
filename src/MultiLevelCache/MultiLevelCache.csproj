@@ -3,7 +3,7 @@
   <PropertyGroup>
     <TargetFrameworks>netstandard2.1;netstandard2.0;net462</TargetFrameworks>
     <PackageId>MultiLevelCache</PackageId>
-    <Version>2.0.1</Version>
+    <Version>2.1.0</Version>
     <Authors>Lundog</Authors>
     <Description>A multi-level cache wrapper for MemoryCache, Redis, and SQL.</Description>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>

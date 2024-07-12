@@ -3,7 +3,7 @@
   <PropertyGroup>
     <TargetFrameworks>netstandard2.1;netstandard2.0;net462</TargetFrameworks>
     <PackageId>MultiLevelCache.Sql</PackageId>
-    <Version>2.0.1</Version>
+    <Version>2.1.0</Version>
     <Authors>Lundog</Authors>
     <Description>A SQL implementation for a durable multi-level cache.</Description>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
@@ -15,7 +15,7 @@
 
   <ItemGroup>
     <PackageReference Include="Dapper" Version="2.1.35" />
-    <PackageReference Include="MultiLevelCache" Version="2.0.1" />
+    <PackageReference Include="MultiLevelCache" Version="2.1.0" />
   </ItemGroup>
 
 </Project>
